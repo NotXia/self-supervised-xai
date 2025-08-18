@@ -44,7 +44,7 @@ if __name__ == "__main__":
             ModelCheckpoint(dirpath=os.path.join(args.model_dir, "checkpoints"), save_top_k=1, save_last=True, monitor="val_loss", mode="min"),
             EarlyStopping(monitor="val_loss", patience=3, mode="min"),
         ],
-        devices = 1
+        devices = args.gpus
     )
 
     trainer.fit(
