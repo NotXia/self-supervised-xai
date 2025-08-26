@@ -52,13 +52,13 @@ class _TextEncoderModel(L.LightningModule):
         nums_sents = pool_selector.sum(dim=1)
 
         out_embs = torch.zeros(batch_size, torch.max(nums_sents), hidden_size).to(self.device)
-        out_mask = torch.ones(batch_size, 1, torch.max(nums_sents), 1).to(self.device)
+        out_mask = torch.zeros(batch_size, 1, torch.max(nums_sents), 1).to(self.device)
         for b in range(batch_size):
             embs = last_hidden_states[b][pool_selector[b]]
             out_embs[b, :len(embs)] = embs
-            out_mask[b, :, :len(embs)] = 0.0
+            out_mask[b, :, :len(embs)] = 1.0
 
-        return ( out_embs, out_mask, nums_sents )
+        return out_embs, out_mask, nums_sents
 
     def forward(self, inputs):
         encoder_embeds = self.encoder(**inputs).last_hidden_state
@@ -107,15 +107,14 @@ class _MaskerModel(L.LightningModule):
         ).last_hidden_state
         batch_size, seq_length, _ = embeds_masker.shape
         
-        # sents_mask = torch.ones(batch_size, seq_length).to(self.device)
-        new_masks = torch.ones_like(attn_masks)
+        out_weights = torch.zeros(batch_size, seq_length, 1).to(embeds.device)
         
         for b in range(batch_size):
-            # sents_mask[b, :nums_sents[b]] = 1 - F.sigmoid(self.masker_linear(embeds_masker[b, :nums_sents[b]])[:, 0])
-            # new_masks[b, :, :nums_sents[b], 0] = sents_mask[b, :nums_sents[b]]
-            new_masks[b, 0, :nums_sents[b], 0] = 1 - F.sigmoid(self.linear(embeds_masker[b, :nums_sents[b]])[:, 0])
+            raw_scores = F.softmax(self.linear(embeds_masker[b, 1:nums_sents[b]])[:, 0], dim=0) # Score only evidence
+            out_weights[b, 0, 0] = 1.0
+            out_weights[b, 1:nums_sents[b], 0] = (raw_scores - torch.min(raw_scores)) / (torch.max(raw_scores) - torch.min(raw_scores))
 
-        return new_masks
+        return out_weights
 
 
 class _ClassifierModel(L.LightningModule):
@@ -150,9 +149,9 @@ class _ClassifierModel(L.LightningModule):
         ))
         self.linear = torch.nn.Linear(hidden_size, out_classes)
 
-    def forward(self, embeds, attn_masks):
+    def forward(self, embeds, attn_masks, emb_weights):
         embeds_cls = self.transformers(
-            embeds, 
+            embeds * emb_weights if emb_weights is not None else embeds, 
             torch.repeat_interleave(attn_masks, repeats=self.num_heads, dim=1)
         ).last_hidden_state
         logits = self.linear(embeds_cls[:, 0])
@@ -212,7 +211,7 @@ class TextClaimVerificationModel(L.LightningModule):
                     [
                         *self.masker.parameters(),
                     ], 
-                    lr = 2e-4
+                    lr = 1e-5
                 )
             case _:
                 optimizer = None
@@ -223,25 +222,33 @@ class TextClaimVerificationModel(L.LightningModule):
         return self.text_encoder.preprocess(texts)
 
 
-    def forward(self, inputs):
-        embeds_enc, masks, nums_sents = self.text_encoder(inputs)
+    def __forward(self, inputs):
+        embeds_enc, attn_masks, nums_sents = self.text_encoder(inputs)
         if (self.__training_phase is None) or (self.__training_phase == "masker"):
-            new_masks = self.masker(embeds_enc, masks, nums_sents)
+            weights = self.masker(embeds_enc, attn_masks, nums_sents)
         else:
-            new_masks = masks
-        logits = self.classifier(embeds_enc, new_masks)
+            weights = None
+        logits = self.classifier(embeds_enc, attn_masks, weights)
 
-        return logits, (1-new_masks).squeeze(1, 3)
+        return logits, weights, nums_sents
+
+    def forward(self, inputs):
+        logits, weights, num_sents = self.__forward(inputs)
+        return logits, weights
 
 
-    def __loss(self, logits, labels, masks, log_prefix):
-        loss = 0
+    def __loss(self, logits, labels, weights, num_sents, log_prefix):
+        loss = 0.0
 
         loss_cls = F.cross_entropy(logits, labels)
         self.log(f"{log_prefix}_loss_cls", loss_cls, sync_dist=True)
         loss += loss_cls
 
-        loss_mask = torch.sum(torch.linalg.norm(masks, ord=2, dim=1)) if self.__training_phase == "masker" else 0
+        loss_mask = 0.0
+        if self.__training_phase == "masker":
+            # loss_mask += -1 * sum(torch.linalg.norm(weights[b, 1:num_sents[b]] - 0.5, ord=2)**2 for b in range(weights.shape[0]))
+            loss_mask += torch.sum((weights[1:] * (1-weights[1:]))**2)
+            loss_mask += sum(torch.linalg.norm(weights[b, 1:num_sents[b]], ord=2)**2 for b in range(weights.shape[0]))
         self.log(f"{log_prefix}_loss_mask", loss_mask, sync_dist=True)
         loss += loss_mask
 
@@ -253,9 +260,9 @@ class TextClaimVerificationModel(L.LightningModule):
         texts, labels = batch
 
         inputs = self.preprocess(texts)
-        logits, sents_masks = self.forward(inputs)
+        logits, sents_weights, num_sents = self.__forward(inputs)
 
-        loss = self.__loss(logits, labels, sents_masks, "train")
+        loss = self.__loss(logits, labels, sents_weights, num_sents, "train")
 
         acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
         self.log("train_acc", acc, sync_dist=True)
@@ -267,9 +274,9 @@ class TextClaimVerificationModel(L.LightningModule):
         texts, labels = batch
 
         inputs = self.preprocess(texts)
-        logits, sents_masks = self.forward(inputs)
+        logits, sents_weights, num_sents = self.__forward(inputs)
 
-        loss = self.__loss(logits, labels, sents_masks, "val")
+        loss = self.__loss(logits, labels, sents_weights, num_sents, "val")
 
         acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
         self.log("val_acc", acc, sync_dist=True)
