@@ -151,7 +151,7 @@ class _ClassifierModel(L.LightningModule):
 
     def forward(self, embeds, attn_masks, emb_weights):
         embeds_cls = self.transformers(
-            embeds * emb_weights if emb_weights is not None else embeds, 
+            (embeds * emb_weights) if emb_weights is not None else embeds, 
             torch.repeat_interleave(attn_masks, repeats=self.num_heads, dim=1)
         ).last_hidden_state
         logits = self.linear(embeds_cls[:, 0])
@@ -164,6 +164,7 @@ class TextClaimVerificationModel(L.LightningModule):
         self, 
         text_encoder_card, 
         training_phase: Optional[Literal[TRAINING_PHASES]] = None, 
+        require_mask = True,
         max_seq_length = 8192, 
         out_classes = 2
     ):
@@ -178,6 +179,7 @@ class TextClaimVerificationModel(L.LightningModule):
 
         self.masker = _MaskerModel(self.hidden_size)
         self.classifier = _ClassifierModel(self.out_classes, self.hidden_size)
+        self.require_mask = require_mask
 
 
     def configure_optimizers(self):
@@ -224,7 +226,7 @@ class TextClaimVerificationModel(L.LightningModule):
 
     def __forward(self, inputs):
         embeds_enc, attn_masks, nums_sents = self.text_encoder(inputs)
-        if (self.__training_phase is None) or (self.__training_phase == "masker"):
+        if (self.__training_phase is None and self.require_mask) or (self.__training_phase == "masker"):
             weights = self.masker(embeds_enc, attn_masks, nums_sents)
         else:
             weights = None
@@ -247,8 +249,8 @@ class TextClaimVerificationModel(L.LightningModule):
         loss_mask = 0.0
         if self.__training_phase == "masker":
             # loss_mask += -1 * sum(torch.linalg.norm(weights[b, 1:num_sents[b]] - 0.5, ord=2)**2 for b in range(weights.shape[0]))
-            loss_mask += torch.sum((weights[1:] * (1-weights[1:]))**2)
-            loss_mask += sum(torch.linalg.norm(weights[b, 1:num_sents[b]], ord=2)**2 for b in range(weights.shape[0]))
+            loss_mask += 0.1 * torch.sum((weights[1:] * (1-weights[1:]))**2)
+            loss_mask += 0.1 * sum(torch.linalg.norm(weights[b, 1:num_sents[b]], ord=2)**2 for b in range(weights.shape[0]))
         self.log(f"{log_prefix}_loss_mask", loss_mask, sync_dist=True)
         loss += loss_mask
 
