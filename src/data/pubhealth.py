@@ -23,7 +23,7 @@ class PubHealthDataset(Dataset):
         self.sentence_splitter = nltk.data.load("tokenizers/punkt/english.pickle")
 
     def __len__(self):
-        # return 50
+        # return 1000
         return len(self.data)
 
     def __getitem__(self, idx):
@@ -34,7 +34,7 @@ class PubHealthDataset(Dataset):
                 [ data["claim"] ] 
                 + self.__split_into_sentences(data["main_text"])
             ) + self.join_seq, 
-            (1 if data["label"] else 0)
+            data["label"]
         )
 
     def __split_into_sentences(self, text):
