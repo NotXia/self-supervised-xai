@@ -1,8 +1,9 @@
+import math
+
 import torch
 import torch.nn.functional as F
 import lightning as L
 from torchmetrics.functional import accuracy
-
 from transformers import AutoTokenizer, AutoModel, AutoConfig
 from transformers.models.bert.modeling_bert import BertEncoder, BertConfig
 
@@ -15,8 +16,33 @@ TRAINING_PHASES = ("classifier", "finetune", "masker")
 
 
 
+class PositionalEncoding(torch.nn.Module):
+    """
+        https://pytorch-tutorials-preview.netlify.app/beginner/transformer_tutorial.html
+    """
+    def __init__(self, d_model: int, dropout: float=0.1, max_len: int=8192):
+        super().__init__()
+        self.dropout = torch.nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(1, max_len, d_model)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        """
+        Arguments:
+            x: Tensor, shape ``[batch_size, seq_len, embedding_dim]``
+        """
+        x = x + self.pe[:, :x.shape[1]]
+        return self.dropout(x)
+
+
+
 class _TextEncoderModel(L.LightningModule):
-    def __init__(self, model_card, max_seq_length, sep_tok_id):
+    def __init__(self, model_card, max_seq_length, sep_tok_id, use_pooling):
         super().__init__()
         self.encoder = AutoModel.from_pretrained(
             model_card, 
@@ -27,6 +53,7 @@ class _TextEncoderModel(L.LightningModule):
         self.max_seq_length = max_seq_length
         self.sep_tok_id = sep_tok_id
         self.hidden_size = self.encoder.config.hidden_size
+        self.use_pooling = use_pooling
 
     def preprocess(self, texts):
         return self.tokenizer(
@@ -54,9 +81,18 @@ class _TextEncoderModel(L.LightningModule):
         out_embs = torch.zeros(batch_size, torch.max(nums_sents), hidden_size).to(self.device)
         out_mask = torch.zeros(batch_size, 1, torch.max(nums_sents), 1).to(self.device)
         for b in range(batch_size):
-            embs = last_hidden_states[b][pool_selector[b]]
-            out_embs[b, :len(embs)] = embs
-            out_mask[b, :, :len(embs)] = 1.0
+            if self.use_pooling:
+                # Average pooling
+                sep_tok_idxs = pool_selector[b].nonzero()
+                for i in range(nums_sents[b]):
+                    start_idx = self.max_seq_length-sequence_lengths[b]-1 if i == 0 else sep_tok_idxs[i-1] + 1
+                    end_idx = sep_tok_idxs[i] + 1
+                    out_embs[b, i] = torch.mean( last_hidden_states[b][ start_idx : end_idx ], dim=0 )
+                    out_mask[b, :, i] = 1.0
+            else:
+                embs = last_hidden_states[b][pool_selector[b]]
+                out_embs[b, :len(embs)] = embs
+                out_mask[b, :, :len(embs)] = 1.0
 
         return out_embs, out_mask, nums_sents
 
@@ -78,7 +114,9 @@ class _MaskerModel(L.LightningModule):
         num_layers = 4, 
         ff_size = 2048, 
         activation = "gelu", 
-        dropout = 0.1
+        dropout = 0.1,
+        max_seq_length = 8192, 
+        use_positional_encoding = False
     ):
         super().__init__()
 
@@ -88,7 +126,10 @@ class _MaskerModel(L.LightningModule):
         self.ff_size = ff_size
         self.activation = activation
         self.dropout = dropout
+        self.max_seq_length = max_seq_length
+        self.use_positional_encoding = use_positional_encoding
 
+        self.positional = PositionalEncoding(self.hidden_size, self.dropout, self.max_seq_length)
         self.transformers = BertEncoder(BertConfig(
             hidden_size = hidden_size,
             num_hidden_layers = num_layers,
@@ -101,6 +142,8 @@ class _MaskerModel(L.LightningModule):
         self.linear = torch.nn.Linear(hidden_size, 1)
 
     def forward(self, embeds, attn_masks, nums_sents):
+        if self.use_positional_encoding:
+            embeds = self.positional(embeds)
         embeds_masker = self.transformers(
             embeds, 
             torch.repeat_interleave(attn_masks, repeats=self.num_heads, dim=1)
@@ -126,7 +169,9 @@ class _ClassifierModel(L.LightningModule):
         num_layers = 4, 
         ff_size = 2048, 
         activation = "gelu", 
-        dropout = 0.1
+        dropout = 0.1,
+        max_seq_length = 8192, 
+        use_positional_encoding = False,
     ):
         super().__init__()
 
@@ -137,7 +182,10 @@ class _ClassifierModel(L.LightningModule):
         self.ff_size = ff_size
         self.activation = activation
         self.dropout = dropout
+        self.max_seq_length = max_seq_length
+        self.use_positional_encoding = use_positional_encoding
 
+        self.positional = PositionalEncoding(self.hidden_size, self.dropout, self.max_seq_length)
         self.transformers = BertEncoder(BertConfig(
             hidden_size = hidden_size,
             num_hidden_layers = num_layers,
@@ -150,8 +198,11 @@ class _ClassifierModel(L.LightningModule):
         self.linear = torch.nn.Linear(hidden_size, out_classes)
 
     def forward(self, embeds, attn_masks, emb_weights):
+        embeds = (embeds * emb_weights) if emb_weights is not None else embeds
+        if self.use_positional_encoding:
+            embeds = self.positional(embeds)
         embeds_cls = self.transformers(
-            (embeds * emb_weights) if emb_weights is not None else embeds, 
+            embeds,
             torch.repeat_interleave(attn_masks, repeats=self.num_heads, dim=1)
         ).last_hidden_state
         logits = self.linear(embeds_cls[:, 0])
@@ -166,7 +217,9 @@ class TextClaimVerificationModel(L.LightningModule):
         training_phase: Optional[Literal[TRAINING_PHASES]] = None, 
         require_mask = True,
         max_seq_length = 8192, 
-        out_classes = 2
+        out_classes = 2,
+        use_pooling = False,
+        cls_positional_encoding = False,
     ):
         super().__init__()
         self.__training_phase = training_phase
@@ -174,11 +227,23 @@ class TextClaimVerificationModel(L.LightningModule):
         self.max_seq_length = max_seq_length
 
         self.sep_tok_id = get_sep_token(text_encoder_card)[1]
-        self.text_encoder = _TextEncoderModel(text_encoder_card, self.max_seq_length, self.sep_tok_id)
+        self.text_encoder = _TextEncoderModel(
+            text_encoder_card, 
+            self.max_seq_length, 
+            self.sep_tok_id,
+            use_pooling = use_pooling
+        )
         self.hidden_size = self.text_encoder.hidden_size
 
-        self.masker = _MaskerModel(self.hidden_size)
-        self.classifier = _ClassifierModel(self.out_classes, self.hidden_size)
+        self.masker = _MaskerModel(
+            self.hidden_size,
+            use_positional_encoding = cls_positional_encoding
+        )
+        self.classifier = _ClassifierModel(
+            self.out_classes, 
+            self.hidden_size,
+            use_positional_encoding = cls_positional_encoding
+        )
         self.require_mask = require_mask
 
 
@@ -192,7 +257,7 @@ class TextClaimVerificationModel(L.LightningModule):
                     [
                         *self.classifier.parameters(),
                     ], 
-                    lr = 2e-4
+                    lr = 1e-5
                 )
             case "finetune":
                 self.text_encoder.train().requires_grad_(True)
@@ -203,7 +268,7 @@ class TextClaimVerificationModel(L.LightningModule):
                         *self.classifier.parameters(),
                         *self.text_encoder.parameters() 
                     ], 
-                    lr = 1e-5
+                    lr = 3e-6
                 )
             case "masker":
                 self.text_encoder.eval().requires_grad_(False)
@@ -228,18 +293,27 @@ class TextClaimVerificationModel(L.LightningModule):
         embeds_enc, attn_masks, nums_sents = self.text_encoder(inputs)
         if (self.__training_phase is None and self.require_mask) or (self.__training_phase == "masker"):
             weights = self.masker(embeds_enc, attn_masks, nums_sents)
+            logits = self.classifier(embeds_enc, attn_masks, weights)
+            logits_contrastive = None
+        else:
+            weights = None
+            logits = self.classifier(embeds_enc, attn_masks, weights)
+            logits_contrastive = None
+
+        return logits, logits_contrastive, weights, nums_sents
+
+    def forward(self, inputs):
+        embeds_enc, attn_masks, nums_sents = self.text_encoder(inputs)
+        if (self.__training_phase is None and self.require_mask) or (self.__training_phase == "masker"):
+            weights = self.masker(embeds_enc, attn_masks, nums_sents)
         else:
             weights = None
         logits = self.classifier(embeds_enc, attn_masks, weights)
 
-        return logits, weights, nums_sents
-
-    def forward(self, inputs):
-        logits, weights, num_sents = self.__forward(inputs)
         return logits, weights
 
 
-    def __loss(self, logits, labels, weights, num_sents, log_prefix):
+    def __loss(self, logits, logits_contrastive, labels, weights, num_sents, log_prefix):
         loss = 0.0
 
         loss_cls = F.cross_entropy(logits, labels)
@@ -262,9 +336,9 @@ class TextClaimVerificationModel(L.LightningModule):
         texts, labels = batch
 
         inputs = self.preprocess(texts)
-        logits, sents_weights, num_sents = self.__forward(inputs)
+        logits, logits_contrastive, sents_weights, num_sents = self.__forward(inputs)
 
-        loss = self.__loss(logits, labels, sents_weights, num_sents, "train")
+        loss = self.__loss(logits, logits_contrastive, labels, sents_weights, num_sents, "train")
 
         acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
         self.log("train_acc", acc, sync_dist=True)
@@ -276,9 +350,9 @@ class TextClaimVerificationModel(L.LightningModule):
         texts, labels = batch
 
         inputs = self.preprocess(texts)
-        logits, sents_weights, num_sents = self.__forward(inputs)
+        logits, logits_contrastive, sents_weights, num_sents = self.__forward(inputs)
 
-        loss = self.__loss(logits, labels, sents_weights, num_sents, "val")
+        loss = self.__loss(logits, logits_contrastive, labels, sents_weights, num_sents, "val")
 
         acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
         self.log("val_acc", acc, sync_dist=True)

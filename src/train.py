@@ -1,5 +1,6 @@
 import os
 import argparse
+import json
 
 import torch
 from torch.utils.data import DataLoader
@@ -22,8 +23,10 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", type=str, required=True, choices=DATASETS, help="Training dataset")
     parser.add_argument("--checkpoint", type=str, required=False, help="Checkpoint to load")
     parser.add_argument("--phase", type=str, required=True, choices=TRAINING_PHASES, help="Training phase")
+    parser.add_argument("--pool-embeds", action="store_true", default=False, help="Use average pooling instead of separator token for sentence embedding")
+    parser.add_argument("--pe-cls", action="store_true", default=False, help="Use positional encoding for masker and classifier")
     parser.add_argument("--epochs", type=int, required=True)
-    parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
+    parser.add_argument("--gpus", type=str, default="0", help="GPUs indices")
     parser.add_argument("--batch-size", type=int, required=True)
     parser.add_argument("--mixed-precision", action="store_true", default=False, help="Use b16 mixed precision")
     parser.add_argument("--data-dir", type=str, default="./_datasets", help="Directory where the dataset is located/downloaded")
@@ -32,7 +35,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     L.seed_everything(args.seed)
-
+    os.makedirs(args.model_dir, exist_ok=True)
 
     trainer = L.Trainer(
         max_epochs = args.epochs,
@@ -58,10 +61,23 @@ if __name__ == "__main__":
                 map_location = "cpu",
                 text_encoder_card = args.model_card, 
                 out_classes = num_classes, 
-                training_phase = args.phase
+                training_phase = args.phase,
+                use_pooling = args.pool_embeds,
+                cls_positional_encoding = args.pe_cls
             )
     else:
-        model = TextClaimVerificationModel(args.model_card, out_classes=num_classes, training_phase=args.phase)
+        model = TextClaimVerificationModel(
+            args.model_card, 
+            out_classes = num_classes, 
+            training_phase = args.phase,
+            use_pooling = args.pool_embeds,
+            cls_positional_encoding = args.pe_cls
+        )
+
+    with open(os.path.join(args.model_dir, "_metadata.json"), "w") as f:
+        json.dump({
+            "arguments": args.__dict__
+        }, f, indent=4)
 
     trainer.fit(
         model,
