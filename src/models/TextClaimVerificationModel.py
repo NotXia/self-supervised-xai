@@ -61,6 +61,7 @@ class _TextEncoderModel(L.LightningModule):
             padding = "max_length",
             max_length = self.max_seq_length,
             truncation = True,
+            add_special_tokens = False,
             return_tensors = "pt",
         ).to(self.device)
 
@@ -220,6 +221,7 @@ class TextClaimVerificationModel(L.LightningModule):
         out_classes = 2,
         use_pooling = False,
         cls_positional_encoding = False,
+        use_contrastive_loss = False,
     ):
         super().__init__()
         self.__training_phase = training_phase
@@ -245,6 +247,7 @@ class TextClaimVerificationModel(L.LightningModule):
             use_positional_encoding = cls_positional_encoding
         )
         self.require_mask = require_mask
+        self.use_contrastive_loss = use_contrastive_loss
 
 
     def configure_optimizers(self):
@@ -294,7 +297,7 @@ class TextClaimVerificationModel(L.LightningModule):
         if (self.__training_phase is None and self.require_mask) or (self.__training_phase == "masker"):
             weights = self.masker(embeds_enc, attn_masks, nums_sents)
             logits = self.classifier(embeds_enc, attn_masks, weights)
-            logits_contrastive = None
+            logits_contrastive = self.classifier(embeds_enc, attn_masks, 1-weights)
         else:
             weights = None
             logits = self.classifier(embeds_enc, attn_masks, weights)
@@ -321,12 +324,23 @@ class TextClaimVerificationModel(L.LightningModule):
         loss += loss_cls
 
         loss_mask = 0.0
+        loss_contrastive = 0.0
         if self.__training_phase == "masker":
             # loss_mask += -1 * sum(torch.linalg.norm(weights[b, 1:num_sents[b]] - 0.5, ord=2)**2 for b in range(weights.shape[0]))
             loss_mask += 0.1 * torch.sum((weights[1:] * (1-weights[1:]))**2)
             loss_mask += 0.1 * sum(torch.linalg.norm(weights[b, 1:num_sents[b]], ord=2)**2 for b in range(weights.shape[0]))
+
+            if self.use_contrastive_loss:
+                for b in range(len(labels)):
+                    loss_contrastive += (1/(self.out_classes-1)) * sum(
+                        F.cross_entropy(logits_contrastive[b].unsqueeze(0), labels[b].unsqueeze(0)) 
+                        for c in range(self.out_classes) if c != labels[b]
+                    )
+
         self.log(f"{log_prefix}_loss_mask", loss_mask, sync_dist=True)
         loss += loss_mask
+        self.log(f"{log_prefix}_loss_contrastive", loss_contrastive, sync_dist=True)
+        loss += loss_contrastive
 
         self.log(f"{log_prefix}_loss", loss, sync_dist=True)
         return loss
