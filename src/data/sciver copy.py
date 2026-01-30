@@ -22,16 +22,14 @@ class SciVerDataset(Dataset):
         self.sentence_splitter = nltk.data.load('tokenizers/punkt/english.pickle')
 
         match split:
-            case "train":
+            case "train" | "validation":
                 self.data = json.load(open(os.path.join(data_dir, "valset.json"), "r"))
-                self.data_idxs = list(range(1000))
+                self.data_idxs = list(range(len(self.data)))
                 rng.shuffle(self.data_idxs)
-                self.data_idxs = self.data_idxs[:800]
-            case "validation":
-                self.data = json.load(open(os.path.join(data_dir, "valset.json"), "r"))
-                self.data_idxs = list(range(1000))
-                rng.shuffle(self.data_idxs)
-                self.data_idxs = self.data_idxs[800:]
+                if split == "train":
+                    self.data_idxs = self.data_idxs[:int(len(self.data)*0.8)]
+                else:
+                    self.data_idxs = self.data_idxs[int(len(self.data)*0.8):]
             case "test":
                 self.data = json.load(open(os.path.join(data_dir, "testset.json"), "r"))
                 self.data_idxs = list(range(len(self.data)))

@@ -10,7 +10,7 @@ from typing import Literal, Optional
 
 
 
-class PubHealthDataset(Dataset):
+class FEVERDataset(Dataset):
     def __init__(self, 
         split: Literal["train", "validation", "test"], 
         join_seq: str,
@@ -34,7 +34,7 @@ class PubHealthDataset(Dataset):
                 [ data["claim"] ] 
                 + self.__split_into_sentences(data["main_text"])
             ) + self.join_seq, 
-            data["label"]
+            (1 if data["label"] else 0)
         )
 
     def __split_into_sentences(self, text):
