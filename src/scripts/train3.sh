@@ -4,7 +4,8 @@ python ./train.py \
     --checkpoint "$3" \
     --phase "masker" \
     --gpus "$2," \
-    --epochs 10 \
+    --epochs 5 \
     --batch-size 32 \
+    --mixed-precision \
     --data-dir ../_datasets \
     --seed 42
