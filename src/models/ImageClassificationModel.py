@@ -60,6 +60,11 @@ class ImageClassificationModel(L.LightningModule):
         masker_lr = 1e-4,
         loss_binary_weight = 0.05,
         loss_norm_weight = 0.05,
+        skip_masker_relu = False,
+        skip_masker_sigmoid = False,
+        skip_masker_rescale = False,
+        skip_loss_penalty_binary = False,
+        skip_loss_penalty_magnitude = False
     ):
         super().__init__()
         self.__training_phase = training_phase
@@ -77,7 +82,10 @@ class ImageClassificationModel(L.LightningModule):
         self.image_masker = ImageMaskerModel(
             self.image_hidden_size,
             in_resolution = self.image_encoder.out_resolution,
-            out_resolution = self.image_encoder.in_resolution
+            out_resolution = self.image_encoder.in_resolution,
+            skip_relu = skip_masker_relu,
+            skip_sigmoid = skip_masker_sigmoid,
+            skip_rescale = skip_masker_rescale,
         )
 
         self.classifier = _ClassifierModel(
@@ -86,6 +94,10 @@ class ImageClassificationModel(L.LightningModule):
         )
         self.require_mask = require_mask
         self.use_contrastive_loss = use_contrastive_loss
+
+        # For ablation
+        self.skip_loss_penalty_binary = skip_loss_penalty_binary
+        self.skip_loss_penalty_magnitude = skip_loss_penalty_magnitude
 
 
     def configure_optimizers(self):
@@ -119,7 +131,7 @@ class ImageClassificationModel(L.LightningModule):
                     [
                         *self.image_masker.parameters()
                     ], 
-                    lr = self.masker_lr
+                    lr = self.masker_lr,
                 )
             case _:
                 optimizer = None
@@ -135,20 +147,19 @@ class ImageClassificationModel(L.LightningModule):
 
         image_weights = None
         if (self.__training_phase is None and self.require_mask) or (self.__training_phase == "masker"):
-            image_embeds, image_weights = self.image_encoder.embed_with_masker(image_inputs, self.image_masker)
+            image_embeds_masked, image_weights = self.image_encoder.embed_with_masker(image_inputs, self.image_masker)
+            logits_masked = self.classifier(image_embeds_masked)
 
-        logits = self.classifier(image_embeds)
-
-        logits_contrastive = None
-        # if (training) and (image_weights is not None) and (self.use_contrastive_loss):
-        #     image_inputs_contrastive = image_inputs.copy()
-        #     image_inputs_contrastive["pixel_values"] = (image_inputs_contrastive["pixel_values"] * (1-image_weights))
-        #     image_embeds_contrastive, _ = self.image_encoder(image_inputs_contrastive)
-        #     logits_contrastive = self.classifier(image_embeds_contrastive)
-
+            if self.__training_phase == "masker":
+                logits_orig = self.classifier(image_embeds)
+                logits = (logits_orig, logits_masked)
+            else:
+                logits = logits_masked
+        else:
+            logits = self.classifier(image_embeds)
 
         if training:
-            return logits, logits_contrastive, image_weights
+            return logits, None, image_weights
         else:
             return logits, image_weights
 
@@ -156,42 +167,29 @@ class ImageClassificationModel(L.LightningModule):
     def __loss(self, logits, logits_contrastive, labels, image_weights, log_prefix):
         loss = 0.0
 
-        loss_cls = F.cross_entropy(logits, labels)
+        if self.__training_phase == "masker":
+            loss_cls = F.cross_entropy(logits[1], labels)
+        else:
+            loss_cls = F.cross_entropy(logits, labels)
         self.log(f"{log_prefix}_loss_cls", loss_cls, sync_dist=True)
         loss += loss_cls
 
         loss_mask = 0.0
         loss_contrastive = 0.0
         if self.__training_phase == "masker":
-            loss_mask += self.loss_binary_weight * (1/len(image_weights))*sum(torch.mean((image_weights[b] * (1-image_weights[b]))**2) for b in range(image_weights.shape[0]))
+            ce_orig = F.cross_entropy(logits[0], labels, reduction="none")
+            ce_masked = F.cross_entropy(logits[1], labels, reduction="none")
+            bs_size, _, weights_h, weights_w = image_weights.shape
 
-            # loss_mask += 200 * sum(image_weights[b].mean() for b in range(image_weights.shape[0]))
-            # loss_mask += 1 * sum(((image_weights[b].sum()) - (image_weights[b].nelement()*0.2))**2  for b in range(image_weights.shape[0]))
-            loss_mask += self.loss_norm_weight * (1/len(image_weights))*sum(torch.linalg.norm(image_weights[b]) for b in range(image_weights.shape[0]))
-            # loss_mask += 0.01 * sum((image_weights[b].mean())**2 for b in range(image_weights.shape[0]))
+            if not self.skip_loss_penalty_binary:
+                loss_mask += (1/bs_size) * sum( max(0, min((1/(ce_masked[b]-ce_orig[b]+1e-16)), 1.0)) * torch.mean((image_weights[b] * (1-image_weights[b]))**2) for b in range(bs_size) )
+            if not self.skip_loss_penalty_magnitude:
+                loss_mask += (1/bs_size) * sum( max(0, min((1/(ce_masked[b]-ce_orig[b]+1e-16)), 1.0)) * torch.mean(image_weights[b])**2 for b in range(bs_size))
 
-
-            # if self.use_contrastive_loss:
-            #     for b in range(len(labels)):
-            #         # loss_contrastive += (1/(self.out_classes-1)) * sum(
-            #         #     F.cross_entropy(logits_contrastive[b].unsqueeze(0), labels[b].unsqueeze(0)) 
-            #         #     for c in range(self.out_classes) if c != labels[b]
-            #         # )
-            #         loss_contrastive += 1 / (
-            #             (1/(self.out_classes-1)) * sum(
-            #                 F.cross_entropy(logits_contrastive[b].unsqueeze(0), labels[b].unsqueeze(0)) 
-            #                 for c in range(self.out_classes) if c != labels[b]
-            #             )
-            #         )
-
-            #     loss_contrastive = 2 * loss_contrastive
-
-        self.log(f"{log_prefix}_loss_mask", loss_mask, sync_dist=True)
+        self.log(f"{log_prefix}_loss_mask", loss_mask, sync_dist=True, prog_bar=True)
         loss += loss_mask
-        # self.log(f"{log_prefix}_loss_contrastive", loss_contrastive, sync_dist=True)
-        # loss += loss_contrastive
 
-        self.log(f"{log_prefix}_loss", loss, sync_dist=True)
+        self.log(f"{log_prefix}_loss", loss, sync_dist=True, prog_bar=True)
         return loss
 
 
@@ -203,10 +201,11 @@ class ImageClassificationModel(L.LightningModule):
 
         loss = self.__loss(logits, logits_contrastive, labels, image_weights, "train")
 
+        logits = logits[1] if self.__training_phase == "masker" else logits
         acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
         f1 = f1_score(logits, labels, task="multiclass", average="macro", num_classes=self.out_classes)
-        self.log("train_acc", acc, sync_dist=True)
-        self.log("train_f1macro", f1, sync_dist=True)
+        self.log("train_acc", acc, sync_dist=True, prog_bar=True)
+        self.log("train_f1macro", f1, sync_dist=True, prog_bar=True)
 
         return loss
 
@@ -219,9 +218,10 @@ class ImageClassificationModel(L.LightningModule):
 
         loss = self.__loss(logits, logits_contrastive, labels, image_weights, "val")
 
+        logits = logits[1] if self.__training_phase == "masker" else logits
         acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
         f1 = f1_score(logits, labels, task="multiclass", average="macro", num_classes=self.out_classes)
-        self.log("val_acc", acc, sync_dist=True)
-        self.log("val_f1macro", f1, sync_dist=True)
+        self.log("val_acc", acc, sync_dist=True, prog_bar=True)
+        self.log("val_f1macro", f1, sync_dist=True, prog_bar=True)
 
         return loss

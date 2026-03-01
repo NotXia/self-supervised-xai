@@ -46,6 +46,11 @@ class TextClassificationModel(L.LightningModule):
         masker_lr = 1e-4,
         loss_binary_weight = 0.01,
         loss_norm_weight = 0.05,
+        skip_masker_relu = False,
+        skip_masker_sigmoid = False,
+        skip_masker_rescale = False,
+        skip_loss_penalty_binary = False,
+        skip_loss_penalty_magnitude = False
     ):
         super().__init__()
         self.__training_phase = training_phase
@@ -67,12 +72,19 @@ class TextClassificationModel(L.LightningModule):
         )
         self.masker = TextMaskerModel(
             self.text_encoder.hidden_size,
+            max_seq_length = max_seq_length,
+            skip_relu = skip_masker_relu,
+            skip_sigmoid = skip_masker_sigmoid,
+            skip_rescale = skip_masker_rescale,
         )
         self.classifier = _ClassifierModel(
             self.out_classes, 
             self.text_encoder.hidden_size,
         )
 
+        # For ablation
+        self.skip_loss_penalty_binary = skip_loss_penalty_binary
+        self.skip_loss_penalty_magnitude = skip_loss_penalty_magnitude
 
     def configure_optimizers(self):
         match self.__training_phase:
@@ -105,7 +117,7 @@ class TextClassificationModel(L.LightningModule):
                     [
                         *self.masker.parameters(),
                     ], 
-                    lr = self.masker_lr
+                    lr = self.masker_lr,
                 )
             case _:
                 optimizer = None
@@ -118,13 +130,20 @@ class TextClassificationModel(L.LightningModule):
 
     def __forward(self, inputs):
         sequence_lengths = inputs["attention_mask"].sum(dim=1)
+        embeds_enc = self.text_encoder(inputs)
         
         if (self.__training_phase is None and self.require_mask) or (self.__training_phase == "masker"):
-            embeds_enc, weights = self.text_encoder.embed_with_masker(inputs, self.masker)
+            embeds_enc_masked, weights = self.text_encoder.embed_with_masker(inputs, self.masker)
+            logits_masked = self.classifier(embeds_enc_masked[:, 0, :])
+
+            if self.__training_phase == "masker":
+                logits_orig = self.classifier(embeds_enc[:, 0, :])
+                logits = (logits_orig, logits_masked)
+            else:
+                logits = logits_masked
         else:
-            embeds_enc = self.text_encoder(inputs)
             weights = None
-        logits = self.classifier(embeds_enc[:, 0, :])
+            logits = self.classifier(embeds_enc[:, 0, :])
 
         return logits, weights, sequence_lengths
 
@@ -136,20 +155,27 @@ class TextClassificationModel(L.LightningModule):
     def __loss(self, logits, labels, weights, sequence_lengths, log_prefix):
         loss = 0.0
 
-        loss_cls = F.cross_entropy(logits, labels)
+        if self.__training_phase == "masker":
+            loss_cls = F.cross_entropy(logits[1], labels)
+        else:
+            loss_cls = F.cross_entropy(logits, labels)
         self.log(f"{log_prefix}_loss_cls", loss_cls, sync_dist=True)
         loss += loss_cls
 
         loss_mask = 0.0
-        if self.__training_phase == "masker":
+        if (self.__training_phase == "masker"):
+            ce_orig = F.cross_entropy(logits[0], labels, reduction="none")
+            ce_masked = F.cross_entropy(logits[1], labels, reduction="none")
             batch_size, seq_len, _ = weights.shape
-            loss_mask += self.loss_binary_weight * (1/batch_size) * sum( torch.mean((weights[b, :] * (1-weights[b, :]))**2) for b in range(batch_size) )
-            loss_mask += self.loss_norm_weight * (1/batch_size) * sum( torch.linalg.norm(weights[b, :sequence_lengths[b]]) for b in range(batch_size) )
+            if not self.skip_loss_penalty_binary:
+                loss_mask += (1/batch_size) * sum( max(0, min((1/(ce_masked[b]-ce_orig[b]+1e-16)), 1.0)) * torch.mean((weights[b, :] * (1-weights[b, :]))**2) for b in range(batch_size) )
+            if not self.skip_loss_penalty_magnitude:
+                loss_mask += (1/batch_size) * sum( max(0, min((1/(ce_masked[b]-ce_orig[b]+1e-16)), 1.0)) * torch.mean(weights[b, :sequence_lengths[b]])**2 for b in range(batch_size) )
             
-        self.log(f"{log_prefix}_loss_mask", loss_mask, sync_dist=True)
+        self.log(f"{log_prefix}_loss_mask", loss_mask, sync_dist=True, prog_bar=True)
         loss += loss_mask
 
-        self.log(f"{log_prefix}_loss", loss, sync_dist=True)
+        self.log(f"{log_prefix}_loss", loss, sync_dist=True, prog_bar=True)
         return loss
 
 
@@ -161,10 +187,11 @@ class TextClassificationModel(L.LightningModule):
 
         loss = self.__loss(logits, labels, sents_weights, sequence_lengths, "train")
 
+        logits = logits[1] if self.__training_phase == "masker" else logits
         acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
         f1 = f1_score(logits, labels, task="multiclass", average="macro", num_classes=self.out_classes)
-        self.log("train_acc", acc, sync_dist=True)
-        self.log("train_f1macro", f1, sync_dist=True)
+        self.log("train_acc", acc, sync_dist=True, prog_bar=True)
+        self.log("train_f1macro", f1, sync_dist=True, prog_bar=True)
 
         return loss
 
@@ -177,9 +204,10 @@ class TextClassificationModel(L.LightningModule):
 
         loss = self.__loss(logits, labels, sents_weights, sequence_lengths, "val")
 
+        logits = logits[1] if self.__training_phase == "masker" else logits
         acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
         f1 = f1_score(logits, labels, task="multiclass", average="macro", num_classes=self.out_classes)
-        self.log("val_acc", acc, sync_dist=True)
-        self.log("val_f1macro", f1, sync_dist=True)
+        self.log("val_acc", acc, sync_dist=True, prog_bar=True)
+        self.log("val_f1macro", f1, sync_dist=True, prog_bar=True)
 
         return loss

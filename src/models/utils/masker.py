@@ -17,7 +17,10 @@ class TextMaskerModel(L.LightningModule):
         ff_size = 2048, 
         activation = "gelu", 
         dropout = 0.1,
-        max_seq_length = 4096, 
+        max_seq_length = 4096,
+        skip_relu = False,
+        skip_sigmoid = False,
+        skip_rescale = False,
     ):
         super().__init__()
 
@@ -40,11 +43,20 @@ class TextMaskerModel(L.LightningModule):
             _attn_implementation = "eager"
         ))
         self.linear = torch.nn.Linear(hidden_size, 1)
+        self.linear_norm = torch.nn.LayerNorm(max_seq_length)
+        
+        # For ablation
+        self.skip_relu = skip_relu
+        self.skip_sigmoid = skip_sigmoid
+        self.skip_rescale = skip_rescale
 
-    def forward(self, embeds, attn_masks):
+    def forward(self, embeds, attn_masks, conditioning=None):
         # Prepare mask for transformer
         attn_masks = attn_masks.unsqueeze(1).unsqueeze(3)
         attn_masks = torch.repeat_interleave(attn_masks, repeats=self.num_heads, dim=1)
+
+        if conditioning is not None:
+            embeds = embeds + conditioning.unsqueeze(1)
 
         # Compute token-wise embeddings
         embeds_masker = self.transformers(
@@ -58,10 +70,13 @@ class TextMaskerModel(L.LightningModule):
         sequence_lengths = attn_masks[:, 0, :, 0].sum(dim=1)
 
         for b in range(batch_size):
+            sl = sequence_lengths[b]
             # Compute attribution scores
             raw_scores = self.linear(embeds_masker[b, :])[:, 0]
-            raw_scores = F.sigmoid(raw_scores) # Appears to be numerically more stable with sigmoid
-            out_weights[b] = (raw_scores - raw_scores.min()) / (raw_scores.max() - raw_scores.min())
+            raw_scores = F.relu(raw_scores) if not self.skip_relu else raw_scores
+            raw_scores = self.linear_norm(raw_scores)
+            raw_scores = F.sigmoid(raw_scores) if not self.skip_sigmoid else raw_scores
+            out_weights[b, :sl] = (raw_scores[:sl] - raw_scores[:sl].min()) / (raw_scores[:sl].max() - raw_scores[:sl].min() + 1e-16) if not self.skip_rescale else raw_scores[:sl]
             
         return out_weights.unsqueeze(2)
 
@@ -72,7 +87,10 @@ class ImageMaskerModel(L.LightningModule):
         self, 
         hidden_size,
         in_resolution,
-        out_resolution
+        out_resolution,
+        skip_relu = False,
+        skip_sigmoid = False,
+        skip_rescale = False,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -83,68 +101,94 @@ class ImageMaskerModel(L.LightningModule):
             nn.ConvTranspose2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.GELU(),
             nn.BatchNorm2d(self.hidden_size),
-            nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1),
-            nn.GELU(),
-            nn.BatchNorm2d(self.hidden_size),
         )
+        self.conv1_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+        self.conv1_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+        
         self.upsample2 = nn.Sequential(
             nn.ConvTranspose2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.GELU(),
             nn.BatchNorm2d(self.hidden_size),
-            nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1),
-            nn.GELU(),
-            nn.BatchNorm2d(self.hidden_size),
-
         )
+        self.conv2_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+        self.conv2_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+
         self.upsample3 = nn.Sequential(
             nn.ConvTranspose2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.GELU(),
             nn.BatchNorm2d(self.hidden_size),
-            nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1),
+        )
+        self.conv3_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+        self.conv3_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+
+        self.upsample4 = nn.Sequential(
+            nn.ConvTranspose2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.GELU(),
             nn.BatchNorm2d(self.hidden_size),
         )
-        # self.upsample4 = nn.Sequential(
-        #     nn.ConvTranspose2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=2, padding=1, output_padding=1),
-        #     nn.GELU(),
-        #     nn.BatchNorm2d(self.hidden_size)
-        # )
+        self.conv4_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+        self.conv4_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+        
+        self.conv_h1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+        self.conv_h2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
         self.head = nn.Conv2d(self.hidden_size, 1, kernel_size=1, stride=1)
+        self.head_norm = nn.BatchNorm2d(1)
 
-    def forward(self, hidden_states, eps=1e-16):
+        # For ablation
+        self.skip_relu = skip_relu
+        self.skip_sigmoid = skip_sigmoid
+        self.skip_rescale = skip_rescale
+
+    def forward(self, hidden_states, conditioning=None, eps=1e-16):
         batch_size, _, _ = hidden_states[-1].shape
         activations = [ 
             hidden_states[i][:, 1:, :].permute(0, 2, 1).contiguous().reshape(batch_size, self.hidden_size, *self.in_resolution).float()
             for i in range(len(hidden_states))
         ]
-        # out_activ_shape = (self.in_resolution[0]*16, self.in_resolution[1]*16)
-        out_activ_shape = (self.in_resolution[0]*8, self.in_resolution[1]*8)
+        
+        # Inject multimodal conditioning
+        if conditioning is not None:
+            conditioning = conditioning.unsqueeze(2).unsqueeze(3)
+            activations = [ activ + conditioning for activ in activations ]
 
-        out_weights = self.upsample1(activations[-1])
+
+        out_weights = self.conv1_1(activations[-1])
+        out_weights = self.conv1_2(out_weights)
+        out_weights = self.upsample1(out_weights)
 
         skip_activ = torchvision.transforms.functional.resize(activations[-2], (self.in_resolution[0]*2, self.in_resolution[1]*2))
-        out_weights = self.upsample2(out_weights + skip_activ)
+        out_weights = self.conv2_1(out_weights + skip_activ)
+        out_weights = self.conv2_2(out_weights)
+        out_weights = self.upsample2(out_weights)
 
         skip_activ = torchvision.transforms.functional.resize(activations[-3], (self.in_resolution[0]*4, self.in_resolution[1]*4))
-        out_weights = self.upsample3(out_weights + skip_activ)
+        out_weights = self.conv3_1(out_weights + skip_activ)
+        out_weights = self.conv3_1(out_weights)
+        out_weights = self.upsample3(out_weights)
 
-        # skip_activ = torchvision.transforms.functional.resize(activations[-4], (self.in_resolution[0]*8, self.in_resolution[1]*8))
-        # out_weights = self.upsample4(out_weights + skip_activ)
-        
+        skip_activ = torchvision.transforms.functional.resize(activations[-4], (self.in_resolution[0]*8, self.in_resolution[1]*8))
+        out_weights = self.conv4_1(out_weights + skip_activ)
+        out_weights = self.conv4_2(out_weights)
+        out_weights = self.upsample4(out_weights)
+
+        out_weights = self.conv_h1(out_weights)
+        out_weights = self.conv_h2(out_weights)
+
         out_weights = self.head(out_weights)
+        out_weights = F.relu(out_weights) if not self.skip_relu else out_weights
+        out_weights = self.head_norm(out_weights)
 
-
+        out_activ_shape = (out_weights.shape[2], out_weights.shape[3])
         out_masks = torch.zeros(batch_size, 1, *self.out_resolution).to(self.device)
 
         for b in range(batch_size):
             raw_scores = out_weights[b].flatten().reshape(1, 1, *out_activ_shape)
+            raw_scores = F.sigmoid(raw_scores) if not self.skip_sigmoid else raw_scores
+            raw_scores = (raw_scores - raw_scores.min()) / (raw_scores.max() - raw_scores.min() + 1e-16) if not self.skip_rescale else raw_scores
 
             # Scale to out resolution
             raw_scores = torchvision.transforms.functional.resize(raw_scores, self.out_resolution, interpolation=torchvision.transforms.InterpolationMode.BILINEAR)
             raw_scores = raw_scores.flatten()
-
-            raw_scores = F.sigmoid(raw_scores)
-            raw_scores = (raw_scores - raw_scores.min()) / (raw_scores.max() - raw_scores.min())
 
             # Put back to output resolution
             out_masks[b] = raw_scores.reshape(1, *self.out_resolution)

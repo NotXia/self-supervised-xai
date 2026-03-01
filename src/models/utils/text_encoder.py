@@ -140,14 +140,14 @@ class TextEncoderModel(L.LightningModule):
         attn_masks = inputs["attention_mask"]
         return self._model(inputs_embedded, attn_masks)
 
-    def embed_with_masker(self, inputs, masker_model):
+    def embed_with_masker(self, inputs, masker_model, conditioning=None):
         inputs_embedded = self.embed(inputs["input_ids"]) # Embed input token indices (static embedding only)
         attn_masks = inputs["attention_mask"]
 
         embeds_enc = self._model(inputs_embedded, attn_masks)
 
         # Compute attribution and recompute embeddings accordingly
-        weights = masker_model(embeds_enc, attn_masks)
+        weights = masker_model(embeds_enc, attn_masks, conditioning)
         embeds_enc = self._model((inputs_embedded * weights), attn_masks)
 
         return embeds_enc, weights

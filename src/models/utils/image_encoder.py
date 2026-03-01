@@ -31,10 +31,10 @@ class ImageEncoderModel(L.LightningModule):
         return encoder_out.last_hidden_state, encoder_out.hidden_states
 
 
-    def embed_with_masker(self, inputs, masker_model):
+    def embed_with_masker(self, inputs, masker_model, conditioning=None):
         embeds, hidden_states = self.forward(inputs)
 
-        weights = masker_model(hidden_states)
+        weights = masker_model(hidden_states, conditioning)
 
         inputs_to_use = inputs.copy()
         inputs_to_use["pixel_values"] = (inputs_to_use["pixel_values"] * weights)

@@ -114,12 +114,14 @@ class MMClassificationModel(L.LightningModule):
         )
         self.text_masker = TextMaskerModel(
             self.text_encoder.hidden_size,
+            max_seq_length = self.text_max_seq_length
         )
 
         # Image branch
         self.image_encoder = ImageEncoderModel(
             image_encoder_card
         )
+        self.image_masker_conditioning = nn.Linear(self.text_encoder.hidden_size, self.image_encoder.hidden_size)
         self.image_masker = ImageMaskerModel(
             self.image_encoder.hidden_size,
             in_resolution = self.image_encoder.out_resolution,
@@ -197,17 +199,34 @@ class MMClassificationModel(L.LightningModule):
 
         if (self.__training_phase is None and self.require_mask) or (self.__training_phase == "masker"):
             # Embed with attributions
-            text_embeds,  text_weights  =  self.text_encoder.embed_with_masker(text_inputs,  self.text_masker)
-            image_embeds, image_weights = self.image_encoder.embed_with_masker(image_inputs, self.image_masker)
+            text_embeds = self.text_encoder(text_inputs)
+            image_embeds, _ = self.image_encoder(image_inputs)
+            fusion_embeds = self.fusion(text_embeds, image_embeds, text_inputs["attention_mask"]).mean(dim=1)
+
+            image_conditioning = self.image_masker_conditioning(fusion_embeds)
+            text_embeds_masked,  text_weights  =  self.text_encoder.embed_with_masker(text_inputs,  self.text_masker, conditioning=None)
+            image_embeds_masked, image_weights = self.image_encoder.embed_with_masker(image_inputs, self.image_masker, conditioning=None)
+
+            if self.__training_phase == "masker":
+                fusion_embeds_text = self.fusion(text_embeds_masked, image_embeds, text_inputs["attention_mask"]).mean(dim=1)
+                fusion_embeds_image = self.fusion(text_embeds, image_embeds_masked, text_inputs["attention_mask"]).mean(dim=1)
+                fusion_embeds_both = self.fusion(text_embeds_masked, image_embeds_masked, text_inputs["attention_mask"]).mean(dim=1)
+                logits_orig = self.classifier(fusion_embeds)
+                logits_text = self.classifier(fusion_embeds_text)
+                logits_image = self.classifier(fusion_embeds_image)
+                logits_both = self.classifier(fusion_embeds_both)
+                logits = (logits_text, logits_image, logits_both, logits_orig)
+            else:
+                fusion_embeds = self.fusion(text_embeds_masked, image_embeds_masked, text_inputs["attention_mask"]).mean(dim=1)
+                logits = self.classifier(fusion_embeds)
         else:
             # Normal embedding
             text_embeds = self.text_encoder(text_inputs)
             image_embeds, _ = self.image_encoder(image_inputs)
             text_weights, image_weights = None, None
 
-        fusion_embeds = self.fusion(text_embeds, image_embeds, text_inputs["attention_mask"])
-        fusion_embeds = fusion_embeds.mean(dim=1)
-        logits = self.classifier(fusion_embeds)
+            fusion_embeds = self.fusion(text_embeds, image_embeds, text_inputs["attention_mask"]).mean(dim=1)
+            logits = self.classifier(fusion_embeds)
 
         if training:
             return logits, text_sequence_lengths, text_weights, image_weights
@@ -217,24 +236,46 @@ class MMClassificationModel(L.LightningModule):
 
     def __loss(self, logits, labels, text_sequence_lengths, text_weights, image_weights, log_prefix):
         loss = 0.0
-        batch_size = len(logits)
+        if self.__training_phase == "masker":
+            batch_size = len(logits[0])
+        else:
+            batch_size = len(logits)
 
-        loss_cls = F.cross_entropy(logits, labels)
+        if self.__training_phase == "masker":
+            loss_cls = (3*F.cross_entropy(logits[0], labels) + F.cross_entropy(logits[1], labels) + F.cross_entropy(logits[2], labels)) / 3
+        else:
+            loss_cls = F.cross_entropy(logits, labels)
         self.log(f"{log_prefix}_loss_cls", loss_cls, sync_dist=True)
         loss += loss_cls
 
         loss_mask = 0.0
+        loss_mask_text = 0.0
+        loss_mask_image = 0.0
         loss_contrastive = 0.0
         if self.__training_phase == "masker":
-            loss_mask += self.loss_binary_text_weight * (1/batch_size) * sum( torch.mean((text_weights[b, :] * (1-text_weights[b, :]))**2) for b in range(batch_size) )
-            loss_mask += self.loss_norm_text_weight * (1/batch_size) * sum( torch.linalg.norm(text_weights[b, :text_sequence_lengths[b]]) for b in range(batch_size) )
-            loss_mask += self.loss_binary_image_weight * (1/batch_size)*sum(torch.mean((image_weights[b] * (1-image_weights[b]))**2) for b in range(batch_size))
-            loss_mask += self.loss_norm_image_weight * (1/batch_size)*sum(torch.linalg.norm(image_weights[b]) for b in range(batch_size))
+            _, _, weights_h, weights_w = image_weights.shape
 
-        self.log(f"{log_prefix}_loss_mask", loss_mask, sync_dist=True)
+            ce_orig = F.cross_entropy(logits[3], labels, reduction="none")
+
+            ce_masked_image = F.cross_entropy(logits[1], labels, reduction="none")
+            loss_mask_image += (1/batch_size) * sum( max(0, min((1/(ce_masked_image[b]-ce_orig[b]+1e-16)), 1.0)) * torch.mean((image_weights[b] * (1-image_weights[b]))**2) for b in range(batch_size) )
+            loss_mask_image += (1/batch_size) * sum( max(0, min((1/(ce_masked_image[b]-ce_orig[b]+1e-16)), 1.0)) * torch.mean(image_weights[b])**2 for b in range(batch_size))
+
+            ce_orig_text = F.cross_entropy(logits[3], labels, reduction="none")
+            ce_masked_text = F.cross_entropy(logits[0], labels, reduction="none")
+            loss_mask_text += (1/batch_size) * sum( max(0, min((1/(ce_masked_text[b]-ce_orig[b]+1e-16)), 1.0)) * torch.mean((text_weights[b, :] * (1-text_weights[b, :]))**2) for b in range(batch_size) )
+            loss_mask_text += (1/batch_size) * sum( max(0, min((1/(ce_masked_text[b]-ce_orig[b]+1e-16)), 1.0)) * torch.mean(text_weights[b, :text_sequence_lengths[b]])**2 for b in range(batch_size) )
+
+            loss_mask += (loss_mask_text + loss_mask_image) / 2
+            ce_mask = F.cross_entropy(logits[2], labels)
+            loss_mask += max(0, min((1/(ce_mask-torch.mean(ce_orig)+1e-16)), 1.0)) * ((loss_mask_text + loss_mask_image) / 2)
+
+        self.log(f"{log_prefix}_loss_mask_text", loss_mask_text, sync_dist=True, prog_bar=True)
+        self.log(f"{log_prefix}_loss_mask_image", loss_mask_image, sync_dist=True, prog_bar=True)
+        self.log(f"{log_prefix}_loss_mask", loss_mask, sync_dist=True, prog_bar=True)
         loss += loss_mask
 
-        self.log(f"{log_prefix}_loss", loss, sync_dist=True)
+        self.log(f"{log_prefix}_loss", loss, sync_dist=True, prog_bar=True)
         return loss
 
 
@@ -246,10 +287,22 @@ class MMClassificationModel(L.LightningModule):
 
         loss = self.__loss(logits, labels, text_sequence_lengths, text_weights, image_weights, "train")
 
-        acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
-        f1 = f1_score(logits, labels, task="multiclass", average="macro", num_classes=self.out_classes)
-        self.log("train_acc", acc, sync_dist=True)
-        self.log("train_f1macro", f1, sync_dist=True)
+        if self.__training_phase == "masker":
+            # acc = (
+            #     accuracy(logits[0], labels, task="multiclass", num_classes=self.out_classes)
+            #     + accuracy(logits[1], labels, task="multiclass", num_classes=self.out_classes)
+            # ) / 2
+            # f1 = (
+            #     f1_score(logits[0], labels, task="multiclass", average="macro", num_classes=self.out_classes)
+            #     + f1_score(logits[1], labels, task="multiclass", average="macro", num_classes=self.out_classes)
+            # ) / 2
+            acc = accuracy(logits[2], labels, task="multiclass", num_classes=self.out_classes)
+            f1 = f1_score(logits[2], labels, task="multiclass", average="macro", num_classes=self.out_classes)
+        else:
+            acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
+            f1 = f1_score(logits, labels, task="multiclass", average="macro", num_classes=self.out_classes)
+        self.log("train_acc", acc, sync_dist=True, prog_bar=True)
+        self.log("train_f1macro", f1, sync_dist=True, prog_bar=True)
 
         return loss
 
@@ -262,9 +315,21 @@ class MMClassificationModel(L.LightningModule):
 
         loss = self.__loss(logits, labels, text_sequence_lengths, text_weights, image_weights, "val")
 
-        acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
-        f1 = f1_score(logits, labels, task="multiclass", average="macro", num_classes=self.out_classes)
-        self.log("val_acc", acc, sync_dist=True)
-        self.log("val_f1macro", f1, sync_dist=True)
+        if self.__training_phase == "masker":
+            # acc = (
+            #     accuracy(logits[0], labels, task="multiclass", num_classes=self.out_classes)
+            #     + accuracy(logits[1], labels, task="multiclass", num_classes=self.out_classes)
+            # ) / 2
+            # f1 = (
+            #     f1_score(logits[0], labels, task="multiclass", average="macro", num_classes=self.out_classes)
+            #     + f1_score(logits[1], labels, task="multiclass", average="macro", num_classes=self.out_classes)
+            # ) / 2
+            acc = accuracy(logits[2], labels, task="multiclass", num_classes=self.out_classes)
+            f1 = f1_score(logits[2], labels, task="multiclass", average="macro", num_classes=self.out_classes)
+        else:
+            acc = accuracy(logits, labels, task="multiclass", num_classes=self.out_classes)
+            f1 = f1_score(logits, labels, task="multiclass", average="macro", num_classes=self.out_classes)
+        self.log("val_acc", acc, sync_dist=True, prog_bar=True)
+        self.log("val_f1macro", f1, sync_dist=True, prog_bar=True)
 
         return loss
