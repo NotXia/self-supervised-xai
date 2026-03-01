@@ -9,5 +9,11 @@ class SparsityMetric(BaseMetric):
         self.device = device
 
     def accumulate(self, attribution):
-        attribution = (attribution - attribution.min()) / (attribution.max() - attribution.min())
-        self.values.append( (attribution.max() / attribution.mean()).item() )
+        if not isinstance(attribution, tuple):
+            attribution = (attribution, )
+        
+        sparsity = []
+        for attr in attribution:
+            attr = (attr - attr.min()) / (attr.max() - attr.min() + 1e-16)
+            sparsity.append( (attr.max() / (attr.mean() + 1e-16)).item() )
+        self.values.append( sum(sparsity) / len(sparsity) )

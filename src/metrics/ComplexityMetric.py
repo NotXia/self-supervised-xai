@@ -10,5 +10,11 @@ class ComplexityMetric(BaseMetric):
         self.device = device
 
     def accumulate(self, attribution):
-        attribution = (attribution - attribution.min()) / (attribution.max() - attribution.min())
-        self.values.append( torch.norm(attribution).item() )
+        if not isinstance(attribution, tuple):
+            attribution = (attribution, )
+
+        complexity = []
+        for attr in attribution:
+            attr = (attr - attr.min()) / (attr.max() - attr.min() + 1e-16)
+            complexity.append( torch.norm(attr).item() )
+        self.values.append( sum(complexity) / len(complexity) )
