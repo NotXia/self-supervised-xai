@@ -32,7 +32,7 @@ class HatefulMemesDataset(Dataset):
                 self.data = pd.read_json(path_or_buf=os.path.join(self.dataset_dir, "train.jsonl"), lines=True)
             case "validation" | "test": 
                 self.data = pd.read_json(path_or_buf=os.path.join(self.dataset_dir, "dev.jsonl"), lines=True)
-                self.data = self.data.sample(frac=1).reset_index(drop=True)
+                self.data = self.data.sample(frac=1, random_state=seed).reset_index(drop=True)
                 thr = int(len(self.data) * 0.6)
                 if split == "validation":
                     self.data = self.data.iloc[:thr]
@@ -41,7 +41,7 @@ class HatefulMemesDataset(Dataset):
         self.data_idxs = list( range(len(self.data)) )
             
         self.image_tsfm = torchvision.transforms.Compose([
-            torchvision.transforms.Resize((500, 500)),
+            torchvision.transforms.Resize((256, 256)),
             torchvision.transforms.ToTensor()
         ])
 

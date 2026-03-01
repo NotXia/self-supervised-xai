@@ -32,9 +32,10 @@ class Flickr8kDataset(Dataset):
             case "test": self.data = self.data["test"]
         self.data_idxs = list( range(len(self.data)*2) )
         self.rng.shuffle(self.data_idxs)
+        self.data_idxs = self.data_idxs
             
         self.image_tsfm = torchvision.transforms.Compose([
-            torchvision.transforms.Resize((500, 500)),
+            torchvision.transforms.Resize((256, 256)),
             torchvision.transforms.ToTensor()
         ])
 

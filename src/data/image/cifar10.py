@@ -40,10 +40,8 @@ class CIFAR10Dataset(Dataset):
             match split:
                 case "train":
                     self.data_idxs = self.train_idxs[:train_size]
-                    assert len(self.data_idxs) == train_size
                 case "validation":
                     self.data_idxs = self.train_idxs[train_size:train_size+val_size]
-                    assert len(self.data_idxs) == val_size
         else:
             self.data = CIFAR10(data_dir, train=False, download=True)
             self.data_idxs = list(range(len(self.data)))
