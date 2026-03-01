@@ -53,7 +53,7 @@ if __name__ == "__main__":
             # ModelCheckpoint(dirpath=os.path.join(model_dir, "checkpoints"), save_top_k=1, save_last=True, monitor="val_loss", mode="min"),
             # EarlyStopping(monitor="val_loss", patience=5, mode="min"),
             ModelCheckpoint(dirpath=os.path.join(model_dir, "checkpoints"), save_top_k=1, save_last=True, monitor="val_acc", mode="max"),
-            EarlyStopping(monitor="val_acc", patience=10, mode="max"),
+            EarlyStopping(monitor="val_acc", patience=5, mode="max"),
 
         ],
         strategy = "ddp_find_unused_parameters_true",
