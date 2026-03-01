@@ -31,7 +31,7 @@ def plot_image_attribution(image, attribution, plot_complete=True, alpha=0.5, fi
         axs[2].set_xticks([]); axs[2].set_yticks([])
         plt.colorbar(im, ax=axs[2], shrink=0.7, location="right")
     else:
-        plt.imshow(image)
+        im = plt.imshow(image)
         plt.imshow(attribution, alpha=alpha)
         plt.xticks([]); plt.yticks([])
         plt.colorbar(im, ax=plt.gca(), shrink=0.7, location="right")
@@ -57,6 +57,9 @@ def decode_text_with_scores(tokens, weights, tokenizer, eos_tok):
         text.append("".join([t for t, w in curr_word]).strip())
         scores.append(sum([w for t, w in curr_word]) / len(curr_word))
 
+    # scores = np.array(scores)
+    # scores = (scores - scores.min()) / (scores.max() - scores.min())
+
     return text, scores
 
 
@@ -64,6 +67,12 @@ def highlighter_html(word, score):
     color = colormaps["OrRd"](round((score) * 255))
     color = [round(c*255) for c in color]
     return f"<span style='color: {'white' if score > 0.75 else 'black'}; background-color: rgb({color[0]} {color[1]} {color[2]})'>{word}</span>"
+
+
+def highlighter_latex(word, score):
+    color = colormaps["OrRd"](round((score) * 255))
+    color = [round(c*255) for c in color]
+    return f"\\colorbox[RGB]{{{color[0]}, {color[1]}, {color[2]}}}{{\\textcolor{{{'white' if score > 0.75 else 'black'}}}{{\\vphantom{{Tg}}{word}}}}}"
 
 
 def display_text_attribution(tokens, weights, tokenizer, eos_tok):
