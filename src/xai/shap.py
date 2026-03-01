@@ -1,23 +1,7 @@
 import torch
-from captum.attr import DeepLift, DeepLiftShap, Saliency, LayerIntegratedGradients
+from captum.attr import DeepLiftShap, GradientShap
 from .utils import *
 
-
-class DeepLiftAttribution():
-    def __init__(self, model, baselines):
-        self.model = get_model_wrapper(model)
-        self.deeplift = DeepLift(self.model)
-        self.baselines = baselines
-
-    def __call__(self, inputs, target, additional_forward_args=None):
-        if type(inputs) is not tuple:
-            inputs = (inputs, )
-        return self.deeplift.attribute(
-            inputs, 
-            baselines = self.baselines, 
-            target = target,
-            additional_forward_args = additional_forward_args
-        )
 
 
 class DeepLiftShapAttribution():
@@ -37,34 +21,20 @@ class DeepLiftShapAttribution():
         )
 
 
-class SaliencyAttribution():
-    def __init__(self, model):
-        self.model = get_model_wrapper(model)
-        self.saliency = Saliency(self.model)
-
-    def __call__(self, inputs, target, additional_forward_args=None):
-        if type(inputs) is not tuple:
-            inputs = (inputs, )
-        return self.saliency.attribute(
-            inputs, 
-            target = target,
-            additional_forward_args = additional_forward_args
-        )
-
-
-class LayerIntegratedGradientsAttribution():
+class GradientShapAttribution():
     def __init__(self, model, baselines):
         self.model = get_model_wrapper(model)
-        self.lig = LayerIntegratedGradients(self.model, self.model.lig_layer)
+        self.gshap = GradientShap(self.model)
         self.baselines = baselines
 
-    def __call__(self, inputs, target, additional_forward_args=None):
+    def __call__(self, inputs, target, n_samples=5, stdevs=0.0, additional_forward_args=None):
         if type(inputs) is not tuple:
             inputs = (inputs, )
-        attribution = self.lig.attribute(
+        return self.gshap.attribute(
             inputs, 
             baselines = self.baselines, 
-            target = target, 
+            target = target,
+            n_samples = n_samples,
+            stdevs = stdevs,
             additional_forward_args = additional_forward_args
         )
-        return self.model.lig_postprocessing(attribution)

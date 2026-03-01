@@ -1,12 +1,13 @@
 import math
 import torch
-from models import ImageClassificationModel, TextClassificationModel
+from models import ImageClassificationModel, TextClassificationModel, MMClassificationModel
 
 
 
 def get_model_wrapper(model):
     if isinstance(model, ImageClassificationModel): return OnlyImageClassificationModel(model)
     elif isinstance(model, TextClassificationModel): return OnlyTextClassificationModel(model)
+    elif isinstance(model, MMClassificationModel): return OnlyTextImageClassificationModel(model)
 
 
 class OnlyImageClassificationModel(torch.nn.Module):
@@ -60,3 +61,39 @@ class OnlyTextClassificationModel(torch.nn.Module):
 
     def lig_postprocessing(self, attribution):
         return (attribution, )
+
+
+class OnlyTextImageClassificationModel(torch.nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+        self.text_encoder = model.text_encoder
+        self.image_encoder = model.image_encoder
+        self.fusion = model.fusion
+        self.classifier = model.classifier
+        self.lig_layer = (self.model.image_encoder.encoder.embeddings, self.model.text_encoder._model.encoder.embeddings)
+
+    def __apply_attribution(self, inputs, attribution):
+        return inputs * attribution
+
+    def forward(self, inputs_image, inputs_text, attn_masks, attribution=None):
+        if inputs_text.dtype is torch.int64: # Input is token ids
+            inputs_text = self.text_encoder.embed(inputs_text)
+
+        if attribution is not None:
+            inputs_image = self.__apply_attribution(inputs_image, attribution[0])
+            inputs_text = self.__apply_attribution(inputs_text, attribution[1])
+
+        embeds_image, _ = self.image_encoder({"pixel_values": inputs_image})
+        embeds_text = self.text_encoder._model(inputs_text, attn_masks)
+        
+        fusion_embeds = self.fusion(embeds_text, embeds_image, attn_masks).mean(dim=1)
+        logits = self.classifier(fusion_embeds)
+        
+        return logits
+
+    def lig_postprocessing(self, attribution):
+        hw = int( math.sqrt(attribution[0].shape[1]-1) )
+        attribution_image = attribution[0][:, 1:].mean(dim=2).reshape(-1, 1, hw, hw)
+        attribution_text = attribution[1]
+        return (attribution_image, attribution_text)
