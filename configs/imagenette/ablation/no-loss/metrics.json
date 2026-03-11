@@ -1,0 +1,128 @@
+{
+    "ours": {
+        "avg-drop": {
+            "mean": 0.0114512782022357,
+            "std": 0.039864272904006105
+        },
+        "delete-auc": {
+            "mean": 0.0818872091430757,
+            "std": 0.06745565592886622
+        },
+        "complexity": {
+            "mean": 149.04064199829102,
+            "std": 24.68144774809008
+        },
+        "sparsity": {
+            "mean": 1.979309151172638,
+            "std": 0.7845885813924387
+        }
+    },
+    "layer-ig": {
+        "avg-drop": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "delete-auc": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "complexity": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "sparsity": {
+            "mean": NaN,
+            "std": NaN
+        }
+    },
+    "saliency": {
+        "avg-drop": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "delete-auc": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "complexity": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "sparsity": {
+            "mean": NaN,
+            "std": NaN
+        }
+    },
+    "deeplift": {
+        "avg-drop": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "delete-auc": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "complexity": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "sparsity": {
+            "mean": NaN,
+            "std": NaN
+        }
+    },
+    "deeplift-shap": {
+        "avg-drop": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "delete-auc": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "complexity": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "sparsity": {
+            "mean": NaN,
+            "std": NaN
+        }
+    },
+    "gradient-shap": {
+        "avg-drop": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "delete-auc": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "complexity": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "sparsity": {
+            "mean": NaN,
+            "std": NaN
+        }
+    },
+    "guided-backprop": {
+        "avg-drop": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "delete-auc": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "complexity": {
+            "mean": NaN,
+            "std": NaN
+        },
+        "sparsity": {
+            "mean": NaN,
+            "std": NaN
+        }
+    }
+}

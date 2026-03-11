@@ -1,0 +1,23 @@
+{
+    "model_name": "text-classifier",
+    "model_args": {
+        "text_encoder_card": "FacebookAI/roberta-base",
+        "max_seq_length": 512,
+        "out_classes": 3,
+        
+        "classifier_lr": 2e-4,
+        "finetune_lr": 1e-5,
+        "masker_lr": 2e-4,
+
+        "loss_binary_weight": 0.01,
+        "loss_norm_weight": 10,
+
+        "skip_masker_relu": false,
+        "skip_masker_sigmoid": false,
+        "skip_masker_rescale": false,
+        "skip_loss_penalty_binary": true,
+        "skip_loss_penalty_magnitude": true
+    },
+    "dataset_name": "tweet-sentiment",
+    "dataset_args": {}
+}

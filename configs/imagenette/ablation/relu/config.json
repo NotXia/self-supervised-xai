@@ -1,0 +1,22 @@
+{
+    "model_name": "image-classifier",
+    "model_args": {
+        "image_encoder_card": "google/vit-base-patch16-224-in21k",
+        "out_classes": 10,
+        
+        "classifier_lr": 1e-4,
+        "finetune_lr": 1e-5,
+        "masker_lr": 1e-4,
+
+        "loss_binary_weight": 0.01,
+        "loss_norm_weight": 0.25,
+
+        "skip_masker_relu": true,
+        "skip_masker_sigmoid": false,
+        "skip_masker_rescale": false,
+        "skip_loss_penalty_binary": false,
+        "skip_loss_penalty_magnitude": false
+    },
+    "dataset_name": "imagenette",
+    "dataset_args": {}
+}

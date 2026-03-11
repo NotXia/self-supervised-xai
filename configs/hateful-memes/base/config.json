@@ -1,0 +1,20 @@
+{
+    "model_name": "mm-classifier",
+    "model_args": {
+        "text_encoder_card": "FacebookAI/roberta-base",
+        "image_encoder_card": "google/vit-base-patch16-224-in21k",
+        "text_max_seq_length": 128,
+        "out_classes": 2,
+        
+        "classifier_lr": 2e-4,
+        "finetune_lr": 1e-5,
+        "masker_lr": 2e-4,
+
+        "loss_binary_text_weight": 0.01,
+        "loss_norm_text_weight": 0.01,
+        "loss_binary_image_weight": 0.01,
+        "loss_norm_image_weight": 15.5
+    },
+    "dataset_name": "hateful-memes",
+    "dataset_args": {}
+}
