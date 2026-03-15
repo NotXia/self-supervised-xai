@@ -8,12 +8,7 @@
         
         "classifier_lr": 2e-4,
         "finetune_lr": 1e-5,
-        "masker_lr": 2e-4,
-
-        "loss_binary_text_weight": 0.01,
-        "loss_norm_text_weight": 0.1,
-        "loss_binary_image_weight": 0.01,
-        "loss_norm_image_weight": 0.1
+        "masker_lr": 2e-4
     },
     "dataset_name": "snli-ve",
     "dataset_args": {}
