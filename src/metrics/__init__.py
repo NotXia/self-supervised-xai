@@ -1,4 +1,6 @@
 from .DeletionAUCMetric import DeletionAUCMetric
+from .InsertionAUCMetric import InsertionAUCMetric
+from .IncreaseConfidenceMetric import IncreaseConfidenceMetric
 from .AverageDropMetric import AverageDropMetric
 from .ComplexityMetric import ComplexityMetric
 from .SparsityMetric import SparsityMetric

@@ -6,7 +6,7 @@ from .BaseMetric import BaseMetric
 from xai import OnlyImageClassificationModel, OnlyTextClassificationModel, OnlyTextImageClassificationModel
 
 
-class AverageDropMetric(BaseMetric):
+class IncreaseConfidenceMetric(BaseMetric):
     def __init__(self, device):
         super().__init__()
         self.device = device
@@ -14,17 +14,17 @@ class AverageDropMetric(BaseMetric):
 
     def accumulate(self, model, input, attribution):
         if isinstance(model, OnlyImageClassificationModel):
-            self.values.append( self.__ad_image_classifier(model, input, attribution) )
+            self.values.append( self.__iic_image_classifier(model, input, attribution) )
         elif isinstance(model, OnlyTextClassificationModel):
-            self.values.append( self.__ad_text_classifier(model, input, attribution) )
+            self.values.append( self.__iic_text_classifier(model, input, attribution) )
         elif isinstance(model, OnlyTextImageClassificationModel):
-            self.values.append( self.__ad_text_image_classifier(model, input, attribution) )
+            self.values.append( self.__iic_text_image_classifier(model, input, attribution) )
         else:
             raise NotImplementedError()
 
 
     @torch.no_grad()
-    def __ad_image_classifier(self, model, inputs, attribution):
+    def __iic_image_classifier(self, model, inputs, attribution):
         inputs = inputs[0]
         attribution = torchvision.transforms.functional.resize(attribution, (inputs.shape[2], inputs.shape[3]), interpolation=torchvision.transforms.InterpolationMode.BILINEAR)
         attribution = (attribution - attribution.min()) / (attribution.max() - attribution.min() + 1e-16)
@@ -36,11 +36,11 @@ class AverageDropMetric(BaseMetric):
         logits_masked = F.softmax(logits_masked, dim=1)
         pred = torch.argmax(logits, dim=1)[0].item()
 
-        return max((logits[0, pred] - logits_masked[0, pred]).item(), 0)
+        return (logits[0, pred] < logits_masked[0, pred]).long().item()
 
 
     @torch.no_grad()
-    def __ad_text_classifier(self, model, inputs, attribution):
+    def __iic_text_classifier(self, model, inputs, attribution):
         attribution = (attribution - attribution.min()) / (attribution.max() - attribution.min() + 1e-16)
         input_ids, attn_masks = inputs
 
@@ -51,11 +51,11 @@ class AverageDropMetric(BaseMetric):
         logits_masked = F.softmax(logits_masked, dim=1)
         pred = torch.argmax(logits, dim=1)[0].item()
 
-        return max((logits[0, pred] - logits_masked[0, pred]).item(), 0)
+        return (logits[0, pred] < logits_masked[0, pred]).long().item()
 
 
     @torch.no_grad()
-    def __ad_text_image_classifier(self, model, inputs, attribution):
+    def __iic_text_image_classifier(self, model, inputs, attribution):
         inputs_image, inputs_text, attn_masks = inputs
         attribution = list(attribution)
         attribution[0] = torchvision.transforms.functional.resize(attribution[0], (inputs_image.shape[2], inputs_image.shape[3]), interpolation=torchvision.transforms.InterpolationMode.BILINEAR)
@@ -69,4 +69,4 @@ class AverageDropMetric(BaseMetric):
         logits_masked = F.softmax(logits_masked, dim=1)
         pred = torch.argmax(logits, dim=1)[0].item()
 
-        return max((logits[0, pred] - logits_masked[0, pred]).item(), 0)
+        return (logits[0, pred] < logits_masked[0, pred]).long().item()

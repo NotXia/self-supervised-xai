@@ -9,7 +9,7 @@ from .BaseMetric import BaseMetric
 from xai import OnlyImageClassificationModel, OnlyTextClassificationModel, OnlyTextImageClassificationModel
 
 
-class DeletionAUCMetric(BaseMetric):
+class InsertionAUCMetric(BaseMetric):
     def __init__(self, device):
         super().__init__()
         self.device = device
@@ -38,13 +38,13 @@ class DeletionAUCMetric(BaseMetric):
             logits = model(inputs, attribution=None)
             pred = torch.argmax(logits, dim=1)[0].item()
 
-            mask = 1 - (attribution >= threshold).float()
-            removed_ratio = (1-mask).mean().cpu().item()
+            mask = (attribution >= threshold).float()
+            inserted_ratio = mask.mean().cpu().item()
             logits_masked = model(inputs, attribution=mask)
             probs_masked = F.softmax(logits_masked, dim=1)
             confidence = probs_masked[0, pred].cpu().item()
 
-            points.append( (removed_ratio, confidence) )
+            points.append( (inserted_ratio, confidence) )
 
         return auc([p[0]for p in points], [p[1]for p in points])
 
@@ -60,13 +60,13 @@ class DeletionAUCMetric(BaseMetric):
             logits = model(input_ids, attn_masks, attribution=None)
             pred = torch.argmax(logits, dim=1)[0].item()
 
-            mask = 1 - (attribution >= threshold).float()
-            removed_ratio = (1-mask).mean().cpu().item()
+            mask = (attribution >= threshold).float()
+            inserted_ratio = mask.mean().cpu().item()
             logits_masked = model(input_ids, attn_masks, attribution=mask)
             probs_masked = F.softmax(logits_masked, dim=1)
             confidence = probs_masked[0, pred].cpu().item()
 
-            points.append( (removed_ratio, confidence) )
+            points.append( (inserted_ratio, confidence) )
 
         return auc([p[0]for p in points], [p[1]for p in points])
 
@@ -84,12 +84,12 @@ class DeletionAUCMetric(BaseMetric):
             logits = model(inputs_image, inputs_text, attn_masks, attribution=None)
             pred = torch.argmax(logits, dim=1)[0].item()
 
-            masks = [1 - (a >= threshold).float() for a in attribution]
-            removed_ratio = np.mean([(1-m).mean().cpu().item() for m in masks])
+            masks = [(a >= threshold).float() for a in attribution]
+            inserted_ratio = np.mean([m.mean().cpu().item() for m in masks])
             logits_masked = model(inputs_image, inputs_text, attn_masks, attribution=masks)
             probs_masked = F.softmax(logits_masked, dim=1)
             confidence = probs_masked[0, pred].cpu().item()
 
-            points.append( (removed_ratio, confidence) )
+            points.append( (inserted_ratio, confidence) )
 
         return auc([p[0]for p in points], [p[1]for p in points])
