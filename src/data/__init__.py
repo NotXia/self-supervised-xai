@@ -24,8 +24,6 @@ from .text_image.snli_ve import SNLIVEDataset
 # from .claim_verification.sciclaimeval import SciClaimEvalDataset
 # from .claim_verification.scitabalign import SciTabAlignDataset
 
-from .utils import *
-
 
 
 DATASETS_MAP = {
