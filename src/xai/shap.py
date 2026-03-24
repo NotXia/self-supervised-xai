@@ -27,7 +27,7 @@ class GradientShapAttribution():
         self.gshap = GradientShap(self.model)
         self.baselines = baselines
 
-    def __call__(self, inputs, target, n_samples=5, stdevs=0.0, additional_forward_args=None):
+    def __call__(self, inputs, target, n_samples=100, stdevs=0.0, additional_forward_args=None):
         if type(inputs) is not tuple:
             inputs = (inputs, )
         return self.gshap.attribute(

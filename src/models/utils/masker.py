@@ -97,37 +97,37 @@ class ImageMaskerModel(L.LightningModule):
         self.in_resolution = in_resolution
         self.out_resolution = out_resolution
     
+        self.conv1_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+        self.conv1_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
         self.upsample1 = nn.Sequential(
             nn.ConvTranspose2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.GELU(),
             nn.BatchNorm2d(self.hidden_size),
         )
-        self.conv1_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
-        self.conv1_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
         
+        self.conv2_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+        self.conv2_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
         self.upsample2 = nn.Sequential(
             nn.ConvTranspose2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.GELU(),
             nn.BatchNorm2d(self.hidden_size),
         )
-        self.conv2_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
-        self.conv2_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
 
+        self.conv3_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+        self.conv3_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
         self.upsample3 = nn.Sequential(
             nn.ConvTranspose2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.GELU(),
             nn.BatchNorm2d(self.hidden_size),
         )
-        self.conv3_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
-        self.conv3_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
 
+        self.conv4_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
+        self.conv4_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
         self.upsample4 = nn.Sequential(
             nn.ConvTranspose2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.GELU(),
             nn.BatchNorm2d(self.hidden_size),
         )
-        self.conv4_1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
-        self.conv4_2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
         
         self.conv_h1 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
         self.conv_h2 = nn.Sequential( nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=3, stride=1, padding=1), nn.GELU(), nn.BatchNorm2d(self.hidden_size), )
@@ -163,7 +163,7 @@ class ImageMaskerModel(L.LightningModule):
 
         skip_activ = torchvision.transforms.functional.resize(activations[-3], (self.in_resolution[0]*4, self.in_resolution[1]*4))
         out_weights = self.conv3_1(out_weights + skip_activ)
-        out_weights = self.conv3_1(out_weights)
+        out_weights = self.conv3_2(out_weights)
         out_weights = self.upsample3(out_weights)
 
         skip_activ = torchvision.transforms.functional.resize(activations[-4], (self.in_resolution[0]*8, self.in_resolution[1]*8))
@@ -173,8 +173,8 @@ class ImageMaskerModel(L.LightningModule):
 
         out_weights = self.conv_h1(out_weights)
         out_weights = self.conv_h2(out_weights)
-
         out_weights = self.head(out_weights)
+
         out_weights = F.relu(out_weights) if not self.skip_relu else out_weights
         out_weights = self.head_norm(out_weights)
 

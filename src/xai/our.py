@@ -7,7 +7,7 @@ class OurAttribution():
         self.model = model.eval()
 
     @torch.no_grad()
-    def __call__(self, inputs):
+    def __call__(self, inputs, label=None):
         if isinstance(self.model, TextClassificationModel):
             _, attr = self.model({
                 "input_ids": inputs[0],
