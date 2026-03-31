@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
+import torchaudio
 import lightning as L
 from transformers import AutoTokenizer, AutoModel, AutoConfig
 from transformers.models.bert.modeling_bert import BertEncoder, BertConfig
@@ -194,6 +195,80 @@ class ImageMaskerModel(L.LightningModule):
             out_masks[b] = raw_scores.reshape(1, *self.out_resolution)
         
         return out_masks
+
+
+
+class AudioMaskerModel(L.LightningModule):
+    def __init__(
+        self, 
+        hidden_size, 
+        num_heads = 4, 
+        num_layers = 2, 
+        ff_size = 2048, 
+        activation = "gelu", 
+        dropout = 0.1,
+        skip_relu = False,
+        skip_sigmoid = False,
+        skip_rescale = False,
+    ):
+        super().__init__()
+
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
+        self.num_layers = num_layers
+        self.ff_size = ff_size
+        self.activation = activation
+        self.dropout = dropout
+
+        self.transformers = BertEncoder(BertConfig(
+            hidden_size = hidden_size,
+            num_hidden_layers = num_layers,
+            num_attention_heads = num_heads,
+            intermediate_size = ff_size,
+            hidden_act = activation,
+            hidden_dropout_prob = dropout,
+            attention_probs_dropout_prob = dropout,
+            _attn_implementation = "eager"
+        ))
+        
+        # For ablation
+        self.skip_relu = skip_relu
+        self.skip_sigmoid = skip_sigmoid
+        self.skip_rescale = skip_rescale
+
+
+    def __dct_projection(self, x, target_len):
+        # Discrete Cosine Transform
+        in_len = x.shape[-1]
+        n = torch.arange(in_len, device=x.device)
+        k = torch.arange(target_len, device=x.device).unsqueeze(1)
+        print(n.shape, k.shape)
+        D = torch.cos(torch.pi * k * (2 * n + 1) / (2 * in_len))  # [target_len, in_len]
+        return (x @ D.T) / in_len
+
+    def forward(self, embeds, seq_length, conditioning=None):
+        batch_size = len(embeds)
+        if conditioning is not None:
+            embeds = embeds + conditioning.unsqueeze(1)
+
+        # Compute token-wise embeddings
+        embeds_masker = self.transformers(
+            embeds, 
+        ).last_hidden_state
+        
+        raw_scores = embeds_masker.flatten(1, 2) # Concatenate embeddings of each token
+        raw_scores = F.interpolate(raw_scores.unsqueeze(1), size=seq_length, mode='linear', align_corners=False).squeeze(1)
+
+        out_weights = torch.zeros(batch_size, seq_length).to(self.device)
+
+        for b in range(batch_size):
+            # Compute attribution scores
+            scores = F.relu(raw_scores[b]) if not self.skip_relu else raw_scores[b]
+            scores = F.sigmoid(scores) if not self.skip_sigmoid else scores
+            scores = (scores - scores.min()) / (scores.max() - scores.min() + 1e-16) if not self.skip_rescale else scores
+            out_weights[b] = scores
+            
+        return out_weights
 
 
 

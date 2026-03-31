@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.metrics import auc
 
 from .BaseMetric import BaseMetric
-from xai import OnlyImageClassificationModel, OnlyTextClassificationModel, OnlyTextImageClassificationModel
+from xai import OnlyImageClassificationModel, OnlyTextClassificationModel, OnlyTextImageClassificationModel, OnlyAudioClassificationModel
 
 
 class DeletionAUCMetric(BaseMetric):
@@ -22,6 +22,8 @@ class DeletionAUCMetric(BaseMetric):
             self.values.append( self.__auc_text_classifier(model, input, attribution, steps) )
         elif isinstance(model, OnlyTextImageClassificationModel):
             self.values.append( self.__auc_text_image_classifier(model, input, attribution, steps) )
+        elif isinstance(model, OnlyAudioClassificationModel):
+            self.values.append( self.__auc_audio_classifier(model, input, attribution, steps) )
         else:
             raise NotImplementedError()
 
@@ -87,6 +89,28 @@ class DeletionAUCMetric(BaseMetric):
             masks = [1 - (a >= threshold).float() for a in attribution]
             removed_ratio = np.mean([(1-m).mean().cpu().item() for m in masks])
             logits_masked = model(inputs_image, inputs_text, attn_masks, attribution=masks)
+            probs_masked = F.softmax(logits_masked, dim=1)
+            confidence = probs_masked[0, pred].cpu().item()
+
+            points.append( (removed_ratio, confidence) )
+
+        return auc([p[0]for p in points], [p[1]for p in points])
+
+
+    @torch.no_grad()
+    def __auc_audio_classifier(self, model, inputs, attribution, steps):
+        inputs = inputs[0]
+        attribution = (attribution - attribution.min()) / (attribution.max() - attribution.min() + 1e-16)
+        attribution = attribution.to(self.device)
+        points = []
+
+        for threshold in [1.1] + np.linspace(1.0, 0.0, steps).tolist():
+            logits = model(inputs, attribution=None)
+            pred = torch.argmax(logits, dim=1)[0].item()
+
+            mask = 1 - (attribution >= threshold).float()
+            removed_ratio = (1-mask).mean().cpu().item()
+            logits_masked = model(inputs, attribution=mask)
             probs_masked = F.softmax(logits_masked, dim=1)
             confidence = probs_masked[0, pred].cpu().item()
 

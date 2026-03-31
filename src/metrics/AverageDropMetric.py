@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import torchvision
 
 from .BaseMetric import BaseMetric
-from xai import OnlyImageClassificationModel, OnlyTextClassificationModel, OnlyTextImageClassificationModel
+from xai import OnlyImageClassificationModel, OnlyTextClassificationModel, OnlyTextImageClassificationModel, OnlyAudioClassificationModel
 
 
 class AverageDropMetric(BaseMetric):
@@ -19,6 +19,8 @@ class AverageDropMetric(BaseMetric):
             self.values.append( self.__ad_text_classifier(model, input, attribution) )
         elif isinstance(model, OnlyTextImageClassificationModel):
             self.values.append( self.__ad_text_image_classifier(model, input, attribution) )
+        elif isinstance(model, OnlyAudioClassificationModel):
+            self.values.append( self.__ad_audio_classifier(model, input, attribution) )
         else:
             raise NotImplementedError()
 
@@ -64,6 +66,21 @@ class AverageDropMetric(BaseMetric):
 
         logits = model(inputs_image, inputs_text, attn_masks, attribution=None)
         logits_masked = model(inputs_image, inputs_text, attn_masks, attribution=attribution)
+
+        logits = F.softmax(logits, dim=1)
+        logits_masked = F.softmax(logits_masked, dim=1)
+        pred = torch.argmax(logits, dim=1)[0].item()
+
+        return max((logits[0, pred] - logits_masked[0, pred]).item(), 0)
+
+
+    @torch.no_grad()
+    def __ad_audio_classifier(self, model, inputs, attribution):
+        inputs = inputs[0]
+        attribution = (attribution - attribution.min()) / (attribution.max() - attribution.min() + 1e-16)
+
+        logits = model(inputs, attribution=None)
+        logits_masked = model(inputs, attribution=attribution.to(self.device))
 
         logits = F.softmax(logits, dim=1)
         logits_masked = F.softmax(logits_masked, dim=1)

@@ -1,6 +1,7 @@
 from .ImageClassificationModel import ImageClassificationModel, TRAINING_PHASES
 from .TextClassificationModel import TextClassificationModel, TRAINING_PHASES
 from .MMClassificationModel import MMClassificationModel, TRAINING_PHASES
+from .AudioClassificationModel import AudioClassificationModel, TRAINING_PHASES
 
 from .utils.utils import *
 from .utils.masker import *
@@ -11,6 +12,7 @@ MODELS_MAP = {
     "text-classifier": TextClassificationModel,
     "image-classifier": ImageClassificationModel,
     "mm-classifier": MMClassificationModel,
+    "audio-classifier": AudioClassificationModel,
 }
 
 def get_model(model_name, checkpoint_path=None, *args, **kwargs):

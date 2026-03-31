@@ -1,28 +1,19 @@
-import nltk
-nltk.download('punkt_tab')
-
-
 from .image.mnist import MNISTDataset
 from .image.cifar10 import CIFAR10Dataset
 from .image.imagenette import ImagenetteDataset
+from .image.oxford_pet import OxfordPetDataset
 
-# from .text.pubhealth import PubHealthDataset
 from .text.tweet_sentiment import TweetSentimentDataset
 from .text.imdb import IMDBDataset
 from .text.politifact import PolitifactDataset
+from .text.hatexplain import HateXplainDataset
 
 from .text_image.flickr8k import Flickr8kDataset
 from .text_image.hateful_memes import HatefulMemesDataset
 from .text_image.snli_ve import SNLIVEDataset
 
-# from .qa.race import RACEDataset
-# from .qa.quail import QuAILDataset
-# from .qa.swag import SWAGDataset
-# from .qa.figureqa import FigureQADataset
+from .audio.tut_urban import TUTUrbanDataset
 
-# from .claim_verification.claim_verification.sciver import SciVerSimpleDataset
-# from .claim_verification.sciclaimeval import SciClaimEvalDataset
-# from .claim_verification.scitabalign import SciTabAlignDataset
 
 
 
@@ -30,24 +21,21 @@ DATASETS_MAP = {
     "mnist": MNISTDataset,
     "cifar10": CIFAR10Dataset,
     "imagenette": ImagenetteDataset,
+    "oxford-pet": OxfordPetDataset,
     
     "imdb": IMDBDataset,
     "tweet-sentiment": TweetSentimentDataset,
     "politifact": PolitifactDataset,
-    # "pubhealth": PubHealthDataset,
+    "fever": FEVERDataset,
+    "movie-rationales": MovieRationalesDataset,
+    "cos-e": CoSEDataset,
+    "hatexplain": HateXplainDataset,
 
     "flickr8k": Flickr8kDataset,
     "hateful-memes": HatefulMemesDataset,
     "snli-ve": SNLIVEDataset,
 
-    # "sciver-simple": SciVerSimpleDataset,
-    # "sciclaimeval": SciClaimEvalDataset,
-    # "scitabalign": SciTabAlignDataset,
-
-    # "race": RACEDataset,
-    # "quail": QuAILDataset,
-    # "swag": SWAGDataset,
-    # "figureqa": FigureQADataset,
+    "tut-urban": TUTUrbanDataset
 }
 
 
