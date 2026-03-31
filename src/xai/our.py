@@ -1,5 +1,5 @@
 import torch
-from models import TextClassificationModel, ImageClassificationModel, MMClassificationModel
+from models import TextClassificationModel, ImageClassificationModel, MMClassificationModel, AudioClassificationModel
 
 
 class OurAttribution():
@@ -31,3 +31,9 @@ class OurAttribution():
             })
             text_weights, image_weights = text_weights.cpu(), image_weights.cpu()
             return (image_weights, text_weights)
+        elif isinstance(self.model, AudioClassificationModel):
+            _, attr = self.model({
+                "input_values": inputs[0],
+            })
+            attr = attr.cpu()
+            return (attr, )
