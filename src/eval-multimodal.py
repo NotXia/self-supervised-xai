@@ -81,67 +81,57 @@ if __name__ == "__main__":
         } for method in methods
     }
 
- 
+
     for i in tqdm(range(len(ds_test))):
-        image, text, label = ds_test[i]
+        text, label = ds_test[i]
 
         with torch.no_grad():
-            image_inputs, text_inputs = model.preprocess([image], [text])
-            logits, text_weights, image_weights = model(image_inputs, text_inputs)
+            inputs = model.preprocess(text)
+            logits, weights = model(inputs)
         pred = torch.argmax(logits).item()
 
-        inputs = (image_inputs["pixel_values"], text_inputs["input_ids"], text_inputs["attention_mask"])
-        text_embeds = model.text_encoder.embed(inputs[1])
+        inputs = (inputs["input_ids"], inputs["attention_mask"])
+        input_embeds = model.text_encoder.embed(inputs[0])
 
-        baselines_text = []
-        baselines_image = []
-        for i in range(20):
-            image_inputs, text_inputs = model.preprocess([ds_train[i][0]], [ds_train[i][1]])
-            text_embeds = model.text_encoder.embed(text_inputs["input_ids"])
-            baselines_text.append(text_embeds)
-            baselines_image.append(image_inputs["pixel_values"])
-        baselines_text = torch.cat(baselines_text)
-        baselines_image = torch.cat(baselines_image)
 
         explainer_our = OurAttribution(model)
-        attr_our = explainer_our(inputs)
+        attr_our = explainer_our(inputs)[0]
         _accum_metrics(metrics["ours"], model_base, inputs, attr_our)
 
-        explainer_lig = LayerIntegratedGradientsAttribution(model, baselines=(inputs[0]*0, inputs[1]*0))
-        attr_lig = explainer_lig((inputs[0], inputs[1]), target=pred, additional_forward_args=inputs[2])
+        explainer_lig = IntegratedGradientsAttribution(model, baselines=(input_embeds * 0))
+        attr_lig = explainer_lig(input_embeds, target=pred, additional_forward_args=inputs[1])[0][0]
         _accum_metrics(metrics["layer-ig"], model_base, inputs, attr_lig)
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            explainer_saliency = SaliencyAttribution(model)
-            attr_saliency = explainer_saliency((inputs[0], text_embeds), target=pred, additional_forward_args=inputs[2])
-            _accum_metrics(metrics["saliency"], model_base, inputs, attr_saliency)
+        explainer_saliency = SaliencyAttribution(model)
+        attr_saliency = explainer_saliency(input_embeds, target=pred, additional_forward_args=inputs[1])[0]
+        _accum_metrics(metrics["saliency"], model_base, inputs, attr_saliency)
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            explainer_dl = DeepLiftAttribution(model, baselines=(inputs[0]*0.0, text_embeds*0.0))
-            attr_dl = explainer_dl((inputs[0], text_embeds), target=pred, additional_forward_args=inputs[2])
+            explainer_dl = DeepLiftAttribution(model, baselines=(input_embeds * 0.0))
+            attr_dl = explainer_dl(input_embeds, target=pred, additional_forward_args=inputs[1])[0]
             _accum_metrics(metrics["deeplift"], model_base, inputs, attr_dl)
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            explainer_dlshap = DeepLiftShapAttribution(model, baselines=(baselines_image, baselines_text))
-            attr_dlshap = explainer_dlshap((inputs[0], text_embeds), target=pred, additional_forward_args=inputs[2].unsqueeze(1))
+            baselines_dlshap = torch.cat([ model.text_encoder.embed(model.preprocess(ds_train[i][0])["input_ids"]) for i in range(20) ], dim=0)
+            explainer_dlshap = DeepLiftShapAttribution(model, baselines=baselines_dlshap)
+            attr_dlshap = explainer_dlshap(input_embeds, target=pred, additional_forward_args=inputs[1].unsqueeze(1))[0]
             _accum_metrics(metrics["deeplift-shap"], model_base, inputs, attr_dlshap)
 
-        explainer_grad_shap = GradientShapAttribution(model, baselines=(baselines_image, baselines_text))
-        attr_grad_shap = explainer_grad_shap((inputs[0], text_embeds), target=pred, n_samples=100, additional_forward_args=inputs[2])
+        baselines_grad_shap = torch.cat([ model.text_encoder.embed(model.preprocess(ds_train[i][0])["input_ids"]) for i in range(20) ], dim=0)
+        explainer_grad_shap = GradientShapAttribution(model, baselines=baselines_grad_shap)
+        attr_grad_shap = explainer_grad_shap(input_embeds, target=pred, n_samples=100, additional_forward_args=inputs[1].unsqueeze(1))[0]
         _accum_metrics(metrics["gradient-shap"], model_base, inputs, attr_grad_shap)
-        
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             explainer_gbprop = GuidedBackpropAttribution(model)
-            attr_gbprop = explainer_gbprop((inputs[0], text_embeds), target=pred, additional_forward_args=inputs[2])
+            attr_gbprop = explainer_gbprop(input_embeds, target=pred, additional_forward_args=inputs[1].unsqueeze(1))[0]
             _accum_metrics(metrics["guided-backprop"], model_base, inputs, attr_gbprop)
 
         torch.cuda.empty_cache()
         gc.collect()
-
 
     # Print results
     tab_out = []

@@ -96,7 +96,7 @@ if __name__ == "__main__":
         attr_our = explainer_our(inputs)[0].mean(dim=1, keepdim=True)
         _accum_metrics(metrics["ours"], model_base, inputs, attr_our)
 
-        explainer_lig = LayerIntegratedGradientsAttribution(model, baselines=(inputs[0] * 0))
+        explainer_lig = IntegratedGradientsAttribution(model, baselines=(inputs[0] * 0))
         attr_lig = explainer_lig(inputs[0], target=pred)[0].mean(dim=1, keepdim=True)
         _accum_metrics(metrics["layer-ig"], model_base, inputs, attr_lig)
 

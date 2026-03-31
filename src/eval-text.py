@@ -98,8 +98,8 @@ if __name__ == "__main__":
         attr_our = explainer_our(inputs)[0]
         _accum_metrics(metrics["ours"], model_base, inputs, attr_our)
 
-        explainer_lig = LayerIntegratedGradientsAttribution(model, baselines=(inputs[0] * 0))
-        attr_lig = explainer_lig(inputs[0], target=pred, additional_forward_args=inputs[1])[0]
+        explainer_lig = IntegratedGradientsAttribution(model, baselines=(input_embeds * 0))
+        attr_lig = explainer_lig(input_embeds, target=pred, additional_forward_args=inputs[1])[0][0]
         _accum_metrics(metrics["layer-ig"], model_base, inputs, attr_lig)
 
         explainer_saliency = SaliencyAttribution(model)
