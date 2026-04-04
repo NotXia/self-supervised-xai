@@ -83,10 +83,10 @@ if __name__ == "__main__":
 
 
     for i in tqdm(range(len(ds_test))):
-        in_image, label = ds_test[i]
+        in_audio, label = ds_test[i]
 
         with torch.no_grad():
-            inputs = model.preprocess(in_image.unsqueeze(0))
+            inputs = model.preprocess(in_audio.unsqueeze(0))
             logits, weights = model(inputs)
         pred = torch.argmax(logits).item()
 
