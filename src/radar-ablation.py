@@ -13,21 +13,40 @@ plt.rcParams["font.family"] = "cmr10"
 plt.rcParams["axes.formatter.use_mathtext"] = True
 
 
+_ablation_name = {
+    "full": "Full",
+    "relu": "No ReLU", 
+    "sigmoid": "No sigmoid", 
+    "rescale": "No rescale", 
+    "loss-binary": "No binary pen.", 
+    "loss-magnitude": "No magnitude pen.", 
+    "no-loss": "No penalty",
+    "nothing": "Nothing", 
+}
+
 
 def plot_radar(config, out_path):
-    with open(os.path.join(config, "metrics.json"), "r") as f:
-        metrics = json.load(f)
-        data = np.array([
-            [  metrics[k]["inc-conf"]["mean"], metrics[k]["avg-drop"]["mean"], metrics[k]["insert-auc"]["mean"], metrics[k]["delete-auc"]["mean"], metrics[k]["complexity"]["mean"], metrics[k]["sparsity"]["mean"] ]
-            for k in metrics.keys()
-        ])
-
-    colors = [ "tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink" ]
+    ablations = list(_ablation_name.keys())
+    colors = [ "tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray" ]
     labels = ["Increase in confidence", "Average drop (inv.)",  "Insertion AUC", "Deletion AUC (inv.)", "Complexity (inv.)", "Compactness"]
-    methods = ["Ours", "Int. Gradients", "Saliency", "DeepLIFT", "DeepLIFT-SHAP", "Gradient-SHAP", "Guided Backprop."]
+
+    data = []
+    with open(os.path.join(config, "base/metrics.json"), "r") as f:
+        metrics = json.load(f)
+        data.append([
+            metrics["ours"]["inc-conf"]["mean"], metrics["ours"]["avg-drop"]["mean"], metrics["ours"]["insert-auc"]["mean"], metrics["ours"]["delete-auc"]["mean"], metrics["ours"]["complexity"]["mean"], metrics["ours"]["sparsity"]["mean"]
+        ])
+    for ablation in ablations:
+        if ablation == "full": continue
+        with open(os.path.join(config, "ablation", ablation, "metrics.json"), "r") as f:
+            metrics = json.load(f)
+            data.append([
+                metrics["ours"]["inc-conf"]["mean"], metrics["ours"]["avg-drop"]["mean"], metrics["ours"]["insert-auc"]["mean"], metrics["ours"]["delete-auc"]["mean"], metrics["ours"]["complexity"]["mean"], metrics["ours"]["sparsity"]["mean"]
+            ])
+    data = np.array(data)
+
     angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
     angles += angles[:1]
-
 
     axis_config = [
         { "min": data[:, 0].min(), "max": data[:, 0].max(), "ticks": np.round(np.linspace(data[:, 0].min(), data[:, 0].max(), 4)[1:-1], 2) }, 
@@ -60,10 +79,10 @@ def plot_radar(config, out_path):
                     fontsize=14, color='black',
                     bbox= { "boxstyle": "round,pad=0.1", "fc": "none", "ec": "none" })
 
-    for values, color, method in zip(data[::-1], colors[::-1], methods[::-1]):
+    for values, color, ablation in zip(data[::-1], colors[::-1], ablations[::-1]):
         values = values.tolist()
         values += values[:1]
-        ax.plot(angles, values, marker="o", color=color, linewidth=2, label=method, alpha=1)
+        ax.plot(angles, values, marker="o", color=color, linewidth=2, label=_ablation_name[ablation], alpha=1)
         ax.fill(angles, values, color=color, alpha=0.2)
 
     ax.set_xticks(angles[:-1])
@@ -84,26 +103,15 @@ def plot_radar(config, out_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="Radar plot creation")
-    parser.add_argument("--out-dir", type=str, default="../_radar", help="Output path")
+    parser.add_argument("--out-dir", type=str, default="../_radar-ablation", help="Output path")
     args = parser.parse_args()
 
-    os.makedirs(args.out_dir, exist_ok=True)
+    os.makedirs( args.out_dir, exist_ok=True )
 
     configs = [
-        ("../configs/mnist/base", "mnist.pdf"),
-        ("../configs/cifar10/base", "cifar10.pdf"),
-        ("../configs/imagenette/base", "imagenette.pdf"),
-        ("../configs/oxford-pet/base", "oxford-pet.pdf"),
-        ("../configs/tweet-sentiment/base", "tweet-sentiment.pdf"),
-        ("../configs/imdb/base", "imdb.pdf"),
-        ("../configs/politifact/base", "politifact.pdf"),
-        ("../configs/hatexplain/base", "hatexplain.pdf"),
-        ("../configs/flickr8k/base", "flickr8k.pdf"),
-        ("../configs/hateful-memes/base", "hateful-memes.pdf"),
-        ("../configs/snli-ve/base", "snli-ve.pdf"),
-        ("../configs/tut-urban/base", "tut-urban.pdf"),
-        ("../configs/luma/base", "luma.pdf"),
-        ("../configs/syntheory/base", "syntheory.pdf"),
+        ("../configs/imagenette", "imagenette.png"),
+        ("../configs/tweet-sentiment", "tweet-sentiment.pdf"),
+        ("../configs/luma", "luma.pdf"),
     ]
 
     for config, out_name in configs:
