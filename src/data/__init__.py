@@ -13,6 +13,8 @@ from .text_image.hateful_memes import HatefulMemesDataset
 from .text_image.snli_ve import SNLIVEDataset
 
 from .audio.tut_urban import TUTUrbanDataset
+from .audio.luma import LUMADataset
+from .audio.syntheory import SynTheoryDataset
 
 
 
@@ -26,16 +28,15 @@ DATASETS_MAP = {
     "imdb": IMDBDataset,
     "tweet-sentiment": TweetSentimentDataset,
     "politifact": PolitifactDataset,
-    "fever": FEVERDataset,
-    "movie-rationales": MovieRationalesDataset,
-    "cos-e": CoSEDataset,
     "hatexplain": HateXplainDataset,
 
     "flickr8k": Flickr8kDataset,
     "hateful-memes": HatefulMemesDataset,
     "snli-ve": SNLIVEDataset,
 
-    "tut-urban": TUTUrbanDataset
+    "tut-urban": TUTUrbanDataset,
+    "luma": LUMADataset,
+    "syntheory": SynTheoryDataset
 }
 
 
