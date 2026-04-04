@@ -81,8 +81,8 @@ def eval_text(model, ds_train, ds_test, threshold=0.5):
         attr_our = explainer_our(inputs)[0]
 
         # Compute attribution maps with all baselines
-        explainer_lig = LayerIntegratedGradientsAttribution(model, baselines=(inputs[0] * 0))
-        attr_lig = explainer_lig(inputs[0], target=pred, additional_forward_args=inputs[1])[0]
+        explainer_lig = IntegratedGradientsAttribution(model, baselines=(input_embeds * 0))
+        attr_lig = explainer_lig(input_embeds, target=pred, additional_forward_args=inputs[1])[0]
 
         explainer_saliency = SaliencyAttribution(model)
         attr_saliency = explainer_saliency(input_embeds, target=pred, additional_forward_args=inputs[1])[0]
@@ -159,7 +159,7 @@ def eval_image(model, ds_train, ds_test, threshold=0.5):
         attr_our = explainer_our(inputs)[0].mean(dim=1, keepdim=True)
 
         # Other baselines
-        explainer_lig = LayerIntegratedGradientsAttribution(model, baselines=(inputs[0] * 0))
+        explainer_lig = IntegratedGradientsAttribution(model, baselines=(inputs[0] * 0))
         attr_lig = explainer_lig(inputs[0], target=pred)[0].mean(dim=1, keepdim=True)
 
         with warnings.catch_warnings():
@@ -209,6 +209,83 @@ def eval_image(model, ds_train, ds_test, threshold=0.5):
     }
 
 
+def eval_audio(model, ds_train, ds_test, threshold=0.5):
+    methods = [ "ours", "layer-ig", "saliency", "deeplift", "deeplift-shap", "gradient-shap", "guided-backprop" ]
+    metrics_accum = {
+        method: {
+            "iou": MulticlassJaccardIndex(2, average="macro"),
+        } for method in methods
+    }
+    all_preds = []
+    all_labels = []
+
+    base_model = get_model_wrapper(model) # Model without explainer
+
+    for i in tqdm(range(len(ds_test))):
+        in_audio, label, xai_label = ds_test[i]
+
+        with torch.no_grad():
+            inputs = model.preprocess(in_audio.unsqueeze(0))
+            logits, _ = model(inputs)
+            logits_base = base_model(inputs["input_values"])
+        pred = torch.argmax(logits).item()
+        pred_base = torch.argmax(logits_base).item()
+
+        inputs = (inputs["input_values"], )
+
+        explainer_our = OurAttribution(model)
+        attr_our = explainer_our(inputs)[0]
+
+        explainer_lig = IntegratedGradientsAttribution(model, baselines=(inputs[0] * 0))
+        attr_lig = explainer_lig(inputs[0], target=pred)[0]
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            explainer_saliency = SaliencyAttribution(model)
+            attr_saliency = explainer_saliency(inputs, target=pred)[0]
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            explainer_dl = DeepLiftAttribution(model, baselines=(inputs[0] * 0.0))
+            attr_dl = explainer_dl(inputs, target=pred)[0]
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            baselines_dlshap = torch.cat([ model.preprocess(ds_train[i][0])["input_values"].unsqueeze(0) for i in range(20) ], dim=0)
+            explainer_dlshap = DeepLiftShapAttribution(model, baselines=baselines_dlshap)
+            attr_dlshap = explainer_dlshap(inputs, target=pred)[0]
+
+        baselines_grad_shap = torch.cat([ model.preprocess(ds_train[i][0])["input_values"].unsqueeze(0) for i in range(20) ], dim=0)
+        explainer_grad_shap = GradientShapAttribution(model, baselines=baselines_grad_shap)
+        attr_grad_shap = explainer_grad_shap(inputs[0], target=pred, n_samples=50)[0]
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            explainer_gbprop = GuidedBackpropAttribution(model)
+            attr_gbprop = explainer_gbprop(inputs, target=pred)[0]
+
+
+        # Compute metrics
+        attr_gt = torch.as_tensor(xai_label).unsqueeze(0)
+
+        all_preds.append( pred_base )
+        all_labels.append( label )
+        for attr, method_name in zip([ attr_our, attr_lig, attr_saliency, attr_dl, attr_dlshap, attr_grad_shap, attr_gbprop ], methods):
+            attr = (attr - attr.min()) / (attr.max() - attr.min())
+            metrics_accum[method_name]["iou"].update(attr.cpu() > threshold, attr_gt.cpu())
+
+    return {
+        "f1_macro": f1_score(all_labels, all_preds, average="macro"),
+        "f1_micro": f1_score(all_labels, all_preds, average="micro"),
+        "attribution": {
+            method: {
+                "iou": float(metrics_accum[method]["iou"].compute())
+            }
+            for method in metrics_accum
+        }
+    }
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="Supervised evaluation")
@@ -241,6 +318,8 @@ if __name__ == "__main__":
             metrics = eval_text(model, ds_train, ds_test, threshold=0.5)
         case "oxford-pet":
             metrics = eval_image(model, ds_train, ds_test, threshold=0.5)
+        case "luma":
+            metrics = eval_audio(model, ds_train, ds_test, threshold=0.5)
         case _:
             raise NotImplementedError()
 
