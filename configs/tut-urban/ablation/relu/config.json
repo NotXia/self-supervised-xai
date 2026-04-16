@@ -1,0 +1,21 @@
+{
+    "model_name": "audio-classifier",
+    "model_args": {
+        "audio_encoder_card": "facebook/hubert-base-ls960",
+        "out_classes": 10,
+        
+        "classifier_lr": 1e-4,
+        "finetune_lr": 1e-5,
+        "masker_lr": 1e-4,
+
+        "skip_masker_relu": true,
+        "skip_masker_sigmoid": false,
+        "skip_masker_rescale": false,
+        "skip_loss_penalty_binary": false,
+        "skip_loss_penalty_magnitude": false
+    },
+    "dataset_name": "tut-urban",
+    "dataset_args": {
+        "sampling_rate": 16000
+    }
+}

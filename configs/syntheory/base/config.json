@@ -1,0 +1,15 @@
+{
+    "model_name": "audio-classifier",
+    "model_args": {
+        "audio_encoder_card": "facebook/hubert-base-ls960",
+        "out_classes": 4,
+        
+        "classifier_lr": 1e-4,
+        "finetune_lr": 1e-5,
+        "masker_lr": 1e-4
+    },
+    "dataset_name": "syntheory",
+    "dataset_args": {
+        "sampling_rate": 16000
+    }
+}
