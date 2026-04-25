@@ -1,0 +1,20 @@
+{
+    "model_name": "text-classifier",
+    "model_args": {
+        "text_encoder_card": "FacebookAI/roberta-base",
+        "max_seq_length": 512,
+        "out_classes": 2,
+        
+        "classifier_lr": 2e-4,
+        "finetune_lr": 1e-5,
+        "masker_lr": 2e-4,
+
+        "skip_masker_relu": false,
+        "skip_masker_sigmoid": false,
+        "skip_masker_rescale": false,
+        "skip_loss_penalty_binary": false,
+        "skip_loss_penalty_magnitude": true
+    },
+    "dataset_name": "imdb",
+    "dataset_args": {}
+}

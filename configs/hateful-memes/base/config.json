@@ -8,7 +8,12 @@
         
         "classifier_lr": 2e-4,
         "finetune_lr": 1e-5,
-        "masker_lr": 2e-4
+        "masker_lr": 2e-4,
+
+        "loss_binary_text_weight": 0.01,
+        "loss_norm_text_weight": 0.01,
+        "loss_binary_image_weight": 0.01,
+        "loss_norm_image_weight": 15.5
     },
     "dataset_name": "hateful-memes",
     "dataset_args": {}

@@ -8,6 +8,9 @@
         "finetune_lr": 1e-5,
         "masker_lr": 1e-4,
 
+        "loss_binary_weight": 0.01,
+        "loss_norm_weight": 0.25,
+
         "skip_masker_relu": true,
         "skip_masker_sigmoid": true,
         "skip_masker_rescale": true,

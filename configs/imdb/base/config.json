@@ -7,7 +7,10 @@
         
         "classifier_lr": 2e-4,
         "finetune_lr": 1e-5,
-        "masker_lr": 2e-4
+        "masker_lr": 2e-4,
+
+        "loss_binary_weight": 0.01,
+        "loss_norm_weight": 10
     },
     "dataset_name": "imdb",
     "dataset_args": {}

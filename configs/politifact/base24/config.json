@@ -1,0 +1,14 @@
+{
+    "model_name": "text-classifier",
+    "model_args": {
+        "text_encoder_card": "FacebookAI/roberta-base",
+        "max_seq_length": 512,
+        "out_classes": 2,
+        
+        "classifier_lr": 2e-4,
+        "finetune_lr": 1e-5,
+        "masker_lr": 2e-4
+    },
+    "dataset_name": "politifact",
+    "dataset_args": {}
+}

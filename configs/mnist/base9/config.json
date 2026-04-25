@@ -1,0 +1,13 @@
+{
+    "model_name": "image-classifier",
+    "model_args": {
+        "image_encoder_card": "google/vit-base-patch16-224-in21k",
+        "out_classes": 10,
+        
+        "classifier_lr": 1e-4,
+        "finetune_lr": 1e-5,
+        "masker_lr": 1e-4
+    },
+    "dataset_name": "mnist",
+    "dataset_args": {}
+}
