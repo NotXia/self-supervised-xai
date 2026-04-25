@@ -14,6 +14,7 @@ class SparsityMetric(BaseMetric):
         
         sparsity = []
         for attr in attribution:
+            attr = torch.abs(attr)
             attr = (attr - attr.min()) / (attr.max() - attr.min() + 1e-16)
             sparsity.append( (attr.max() / (attr.mean() + 1e-16)).item() )
         self.values.append( sum(sparsity) / len(sparsity) )

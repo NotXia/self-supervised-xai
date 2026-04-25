@@ -32,6 +32,7 @@ class DeletionAUCMetric(BaseMetric):
     def __auc_image_classifier(self, model, inputs, attribution, steps):
         inputs = inputs[0]
         attribution = torchvision.transforms.functional.resize(attribution, (inputs.shape[2], inputs.shape[3]), interpolation=torchvision.transforms.InterpolationMode.BILINEAR)
+        attribution = torch.abs(attribution)
         attribution = (attribution - attribution.min()) / (attribution.max() - attribution.min() + 1e-16)
         attribution = attribution.to(self.device)
         points = []
@@ -53,6 +54,7 @@ class DeletionAUCMetric(BaseMetric):
 
     @torch.no_grad()
     def __auc_text_classifier(self, model, inputs, attribution, steps):
+        attribution = torch.abs(attribution)
         attribution = (attribution - attribution.min()) / (attribution.max() - attribution.min() + 1e-16)
         attribution = attribution.to(self.device)
         input_ids, attn_masks = inputs
@@ -78,6 +80,8 @@ class DeletionAUCMetric(BaseMetric):
         inputs_image, inputs_text, attn_masks = inputs
         attribution = list(attribution)
         attribution[0] = torchvision.transforms.functional.resize(attribution[0], (inputs_image.shape[2], inputs_image.shape[3]), interpolation=torchvision.transforms.InterpolationMode.BILINEAR)
+        attribution[0] = torch.abs(attribution[0])
+        attribution[1] = torch.abs(attribution[1])
         attribution[0] = ( (attribution[0] - attribution[0].min()) / (attribution[0].max() - attribution[0].min() + 1e-16) ).to(self.device)
         attribution[1] = ( (attribution[1] - attribution[1].min()) / (attribution[1].max() - attribution[1].min() + 1e-16) ).to(self.device)
         points = []
@@ -100,6 +104,7 @@ class DeletionAUCMetric(BaseMetric):
     @torch.no_grad()
     def __auc_audio_classifier(self, model, inputs, attribution, steps):
         inputs = inputs[0]
+        attribution = torch.abs(attribution)
         attribution = (attribution - attribution.min()) / (attribution.max() - attribution.min() + 1e-16)
         attribution = attribution.to(self.device)
         points = []

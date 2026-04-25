@@ -15,6 +15,7 @@ class ComplexityMetric(BaseMetric):
 
         complexity = []
         for attr in attribution:
+            attr = torch.abs(attr)
             attr = (attr - attr.min()) / (attr.max() - attr.min() + 1e-16)
             complexity.append( torch.norm(attr).item() )
         self.values.append( sum(complexity) / len(complexity) )

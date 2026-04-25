@@ -114,6 +114,8 @@ def eval_text(model, ds_train, ds_test, threshold=0.5):
         all_preds.append( pred_base )
         all_labels.append( label )
         for attr, method_name in zip([ attr_our, attr_lig, attr_saliency, attr_dl, attr_dlshap, attr_grad_shap, attr_gbprop ], methods):
+            attr = torch.abs(attr)
+            attr = (attr - attr.min()) / (attr.max() - attr.min())
             pred_scores = _tokens_to_scores(model, tokens, attr.detach().cpu()).unsqueeze(0)
             metrics_accum[method_name]["iou"].update(pred_scores > threshold, attr_gt)
 
@@ -194,6 +196,7 @@ def eval_image(model, ds_train, ds_test, threshold=0.5):
         all_labels.append( label )
         for attr, method_name in zip([ attr_our, attr_lig, attr_saliency, attr_dl, attr_dlshap, attr_grad_shap, attr_gbprop ], methods):
             attr = torchvision.transforms.functional.resize(attr[0].cpu().detach(), (xai_label.shape[1], xai_label.shape[2]), interpolation=torchvision.transforms.InterpolationMode.BILINEAR)
+            attr = torch.abs(attr)
             attr = (attr - attr.min()) / (attr.max() - attr.min())
             metrics_accum[method_name]["iou"].update(attr.unsqueeze(0) > threshold, attr_gt)
 
@@ -271,6 +274,7 @@ def eval_audio(model, ds_train, ds_test, threshold=0.5):
         all_preds.append( pred_base )
         all_labels.append( label )
         for attr, method_name in zip([ attr_our, attr_lig, attr_saliency, attr_dl, attr_dlshap, attr_grad_shap, attr_gbprop ], methods):
+            attr = torch.abs(attr)
             attr = (attr - attr.min()) / (attr.max() - attr.min())
             metrics_accum[method_name]["iou"].update(attr.cpu() > threshold, attr_gt.cpu())
 
