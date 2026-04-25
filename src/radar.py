@@ -7,46 +7,61 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colormaps
+from collections import defaultdict
 
-plt.rcParams["font.size"] = 16
+plt.rcParams["font.size"] = 14
 plt.rcParams["font.family"] = "cmr10"
 plt.rcParams["axes.formatter.use_mathtext"] = True
 
 
 
-def plot_radar(config, out_path):
-    with open(os.path.join(config, "metrics.json"), "r") as f:
-        metrics = json.load(f)
-        data = np.array([
-            [  metrics[k]["inc-conf"]["mean"], metrics[k]["avg-drop"]["mean"], metrics[k]["insert-auc"]["mean"], metrics[k]["delete-auc"]["mean"], metrics[k]["complexity"]["mean"], metrics[k]["sparsity"]["mean"] ]
-            for k in metrics.keys()
-        ])
+def plot_radar(configs, out_path):
+    metrics = {}
+
+    # Load each run
+    for config in configs:
+        with open(os.path.join(config, "metrics.json"), "r") as f:
+            m = json.load(f)
+            for method in m:
+                if method not in metrics: metrics[method] = {}
+                for metric_name in m[method]:
+                    if metric_name not in metrics[method]: metrics[method][metric_name] = 0.0
+                    metrics[method][metric_name] += m[method][metric_name]["mean"]
+
+    # Average
+    for method in metrics:
+        for metric_name in metrics[method]:
+            metrics[method][metric_name] = metrics[method][metric_name] / len(configs)
+
+    data = np.array([
+        [  metrics[k]["inc-conf"], metrics[k]["avg-drop"], metrics[k]["insert-auc"], metrics[k]["delete-auc"], metrics[k]["complexity"], metrics[k]["sparsity"] ]
+        for k in metrics.keys()
+    ])
 
     colors = [ "tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink" ]
-    labels = ["Increase in confidence", "Average drop (inv.)",  "Insertion AUC", "Deletion AUC (inv.)", "Complexity (inv.)", "Compactness"]
+    labels = ["Avg. gain", "Avg. drop\n(inv.)",  "Ins. AUC", "Del. AUC\n(inv.)", "Complexity\n(inv.)", "Sparsity"]
     methods = ["Ours", "Int. Gradients", "Saliency", "DeepLIFT", "DeepLIFT-SHAP", "Gradient-SHAP", "Guided Backprop."]
     angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
     angles += angles[:1]
 
-
     axis_config = [
-        { "min": data[:, 0].min(), "max": data[:, 0].max(), "ticks": np.round(np.linspace(data[:, 0].min(), data[:, 0].max(), 4)[1:-1], 2) }, 
-        { "min": data[:, 1].min(), "max": data[:, 1].max(), "ticks": np.round(np.linspace(data[:, 1].min(), data[:, 1].max(), 4)[1:-1], 2) }, 
-        { "min": data[:, 2].min(), "max": data[:, 2].max(), "ticks": np.round(np.linspace(data[:, 2].min(), data[:, 2].max(), 4)[1:-1], 2) }, 
-        { "min": data[:, 3].min(), "max": data[:, 3].max(), "ticks": np.round(np.linspace(data[:, 3].min(), data[:, 3].max(), 4)[1:-1], 2) }, 
-        { "min": data[:, 4].min(), "max": data[:, 4].max(), "ticks": np.round(np.linspace(data[:, 4].min(), data[:, 4].max(), 4)[1:-1]).astype(int) }, 
-        { "min": data[:, 5].min(), "max": data[:, 5].max(), "ticks": np.round(np.linspace(data[:, 5].min(), data[:, 5].max(), 4)[1:-1]).astype(int) }
+        { "min": 0.0, "max": 1.0, "ticks": np.round(np.linspace(0.0, 1.0, 4)[1:-1], 1) }, 
+        { "min": 0.0, "max": 1.0, "ticks": np.round(np.linspace(0.0, 1.0, 4)[1:-1], 1) }, 
+        { "min": 0.0, "max": 1.0, "ticks": np.round(np.linspace(0.0, 1.0, 4)[1:-1], 1) }, 
+        { "min": 0.0, "max": 1.0, "ticks": np.round(np.linspace(0.0, 1.0, 4)[1:-1], 1) }, 
+        { "min": 0.0, "max": data[:, 4].max()*1.1, "ticks": np.round(np.linspace(0.0, data[:, 4].max()*1.1, 4)[1:-1]).astype(int) }, 
+        { "min": 0.0, "max": data[:, 5].max()*1.1, "ticks": np.round(np.linspace(0.0, data[:, 5].max()*1.1, 4)[1:-1]).astype(int) }
     ]
 
     invert_idxs = [1, 3, 4]
 
     for i in range(6):
-        data[:, i] = (data[:, i] - data[:, i].min()) / (data[:, i].max() - data[:, i].min())
+        data[:, i] = (data[:, i] - axis_config[i]["min"]) / (axis_config[i]["max"] - axis_config[i]["min"])
     for i in invert_idxs:
-        data[:, i] = 1 - (data[:, i] / np.max(data[:, i]))
+        data[:, i] = 1 - data[:, i]
 
 
-    fig, ax = plt.subplots(figsize=(5, 5), subplot_kw=dict(polar=True))
+    fig, ax = plt.subplots(figsize=(3.5, 3.5), subplot_kw=dict(polar=True))
 
     for i, (angle, cfg) in enumerate(zip(angles, axis_config)):
         for j, tick in enumerate(cfg['ticks']):
@@ -57,13 +72,13 @@ def plot_radar(config, out_path):
                 label = f"{tick:,}"
             ax.text(angle, norm_tick, label,
                     ha='center', va='center',
-                    fontsize=14, color='black',
+                    fontsize=12, color='black',
                     bbox= { "boxstyle": "round,pad=0.1", "fc": "none", "ec": "none" })
 
-    for values, color, method in zip(data[::-1], colors[::-1], methods[::-1]):
+    for values, color, method in zip(data, colors, methods):
         values = values.tolist()
         values += values[:1]
-        ax.plot(angles, values, marker="o", color=color, linewidth=2, label=method, alpha=1)
+        ax.plot(angles, values, marker="o", color=color, linewidth=2, label=method, alpha=1, zorder=2 if method == "Ours" else 1)
         ax.fill(angles, values, color=color, alpha=0.2)
 
     ax.set_xticks(angles[:-1])
@@ -71,7 +86,7 @@ def plot_radar(config, out_path):
     for i, (angle, label) in enumerate(zip(angles[:-1], labels)):
         rotation = [270, -30, 30, 90, 150, 210][i]
         ax.text(
-            angle, 1.15,
+            angle, 1.3,
             label,
             ha='center',
             va='center',
@@ -79,7 +94,17 @@ def plot_radar(config, out_path):
         )
     ax.set_yticklabels([])
     plt.tight_layout()
-    plt.savefig(out_path, bbox_inches="tight")
+    plt.savefig(out_path, bbox_inches="tight", pad_inches=0)
+
+    label_params = plt.gca().get_legend_handles_labels() 
+    figl, axl = plt.subplots()
+    axl.axis(False)
+    leg = axl.legend(*label_params, loc="center", bbox_to_anchor=(0.5, 0.5), prop={"size": 50}, borderpad=0, frameon=False, ncols=1)
+    figl.canvas.draw()
+    bbox = leg.get_window_extent().transformed(figl.dpi_scale_trans.inverted())
+    figl.savefig(os.path.join(Path(out_path).parent, "legend.pdf"), bbox_inches=bbox, pad_inches=0)
+    
+    plt.close()
 
 
 if __name__ == "__main__":
@@ -90,21 +115,21 @@ if __name__ == "__main__":
     os.makedirs(args.out_dir, exist_ok=True)
 
     configs = [
-        ("../configs/mnist/base", "mnist.pdf"),
-        ("../configs/cifar10/base", "cifar10.pdf"),
-        ("../configs/imagenette/base", "imagenette.pdf"),
-        ("../configs/oxford-pet/base", "oxford-pet.pdf"),
-        ("../configs/tweet-sentiment/base", "tweet-sentiment.pdf"),
-        ("../configs/imdb/base", "imdb.pdf"),
-        ("../configs/politifact/base", "politifact.pdf"),
-        ("../configs/hatexplain/base", "hatexplain.pdf"),
-        ("../configs/flickr8k/base", "flickr8k.pdf"),
-        ("../configs/hateful-memes/base", "hateful-memes.pdf"),
-        ("../configs/snli-ve/base", "snli-ve.pdf"),
-        ("../configs/tut-urban/base", "tut-urban.pdf"),
-        ("../configs/luma/base", "luma.pdf"),
-        ("../configs/syntheory/base", "syntheory.pdf"),
+        ([ "../configs/mnist/base", "../configs/mnist/base9", "../configs/mnist/base24"], "mnist.pdf"),
+        ([ "../configs/cifar10/base", "../configs/cifar10/base9", "../configs/cifar10/base24"], "cifar10.pdf"),
+        ([ "../configs/imagenette/base", "../configs/imagenette/base9", "../configs/imagenette/base24"], "imagenette.pdf"),
+        # ("../configs/oxford-pet/base", "oxford-pet.pdf"),
+        ([ "../configs/tweet-sentiment/base", "../configs/tweet-sentiment/base9", "../configs/tweet-sentiment/base24" ], "tweet-sentiment.pdf"),
+        ([ "../configs/imdb/base", "../configs/imdb/base9", "../configs/imdb/base24" ], "imdb.pdf"),
+        ([ "../configs/politifact/base", "../configs/politifact/base9", "../configs/politifact/base24" ], "politifact.pdf"),
+        # ("../configs/hatexplain/base", "hatexplain.pdf"),
+        ([ "../configs/flickr8k/base", "../configs/flickr8k/base9", "../configs/flickr8k/base24" ], "flickr8k.pdf"),
+        ([ "../configs/hateful-memes/base", "../configs/hateful-memes/base9", "../configs/hateful-memes/base24" ], "hateful-memes.pdf"),
+        ([ "../configs/snli-ve/base", "../configs/snli-ve/base9", "../configs/snli-ve/base24" ], "snli-ve.pdf"),
+        ([ "../configs/tut-urban/base", "../configs/tut-urban/base9", "../configs/tut-urban/base24" ], "tut-urban.pdf"),
+        ([ "../configs/luma/base", "../configs/luma/base9", "../configs/luma/base24" ], "luma.pdf"),
+        ([ "../configs/syntheory/base", "../configs/syntheory/base9", "../configs/syntheory/base24" ], "syntheory.pdf"),
     ]
 
-    for config, out_name in configs:
-        plot_radar(config, os.path.join(args.out_dir, out_name))
+    for configs, out_name in configs:
+        plot_radar(configs, os.path.join(args.out_dir, out_name))

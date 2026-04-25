@@ -17,7 +17,7 @@ _baseline_name = {
 
 _metric_name = {
     'avg-drop': "Avg. drop $\\downarrow$", 
-    'inc-conf': "Inc. conf. $\\uparrow$", 
+    'inc-conf': "Avg. gain $\\uparrow$", 
     'delete-auc': "Delete AUC $\\downarrow$", 
     'insert-auc': "Insert AUC $\\uparrow$", 
     'complexity': "Complexity $\\downarrow$", 
@@ -37,8 +37,6 @@ _metric_best = {
 
 def table2latex(table):
     out = (
-        "\\def\\arraystretch{0.75} \n"
-        "\\small \n"
         "\\makebox[\\linewidth][c]{% \n"
         "\t\\begin{tabular}{lcccccc} \n"
         "\t\t\\toprule \n"
@@ -56,9 +54,29 @@ def table2latex(table):
 
 
 
-def to_latex(config, out_path):
-    with open(os.path.join(config, "metrics.json"), "r") as f:
-        data = json.load(f)
+def to_latex(configs, out_path):
+    # with open(os.path.join(config, "metrics.json"), "r") as f:
+    #     data = json.load(f)
+
+    data = {}
+
+    # Load each run
+    for config in configs:
+        with open(os.path.join(config, "metrics.json"), "r") as f:
+            m = json.load(f)
+            for method in m:
+                if method not in data: data[method] = {}
+                for metric_name in m[method]:
+                    if metric_name not in data[method]: data[method][metric_name] = []
+                    data[method][metric_name].append( m[method][metric_name]["mean"] )
+
+    # Average
+    for method in data:
+        for metric_name in data[method]:
+            values = data[method][metric_name]
+            data[method][metric_name] = {}
+            data[method][metric_name]["mean"] = np.mean(values)
+            data[method][metric_name]["std"] = np.std(values)
     
     baselines = list(_baseline_name.keys())
     metrics = list(_metric_name.keys())
@@ -94,20 +112,20 @@ if __name__ == "__main__":
     os.makedirs( args.out_dir, exist_ok=True )
     
     configs = [
-        ("../configs/mnist/base", "mnist.tex"),
-        ("../configs/cifar10/base", "cifar10.tex"),
-        ("../configs/imagenette/base", "imagenette.tex"),
-        ("../configs/oxford-pet/base", "oxford-pet.tex"),
-        ("../configs/tweet-sentiment/base", "tweet-sentiment.tex"),
-        ("../configs/imdb/base", "imdb.tex"),
-        ("../configs/politifact/base", "politifact.tex"),
-        ("../configs/hatexplain/base", "hatexplain.tex"),
-        ("../configs/flickr8k/base", "flickr8k.tex"),
-        ("../configs/hateful-memes/base", "hateful-memes.tex"),
-        ("../configs/snli-ve/base", "snli-ve.tex"),
-        ("../configs/tut-urban/base", "tut-urban.tex"),
-        ("../configs/luma/base", "luma.tex"),
-        ("../configs/syntheory/base", "syntheory.tex"),
+        ([ "../configs/mnist/base", "../configs/mnist/base9", "../configs/mnist/base24"], "mnist.tex"),
+        ([ "../configs/cifar10/base", "../configs/cifar10/base9", "../configs/cifar10/base24"], "cifar10.tex"),
+        ([ "../configs/imagenette/base", "../configs/imagenette/base9", "../configs/imagenette/base24"], "imagenette.tex"),
+        # ("../configs/oxford-pet/base", "oxford-pet.tex"),
+        ([ "../configs/tweet-sentiment/base", "../configs/tweet-sentiment/base9", "../configs/tweet-sentiment/base24" ], "tweet-sentiment.tex"),
+        ([ "../configs/imdb/base", "../configs/imdb/base9", "../configs/imdb/base24" ], "imdb.tex"),
+        ([ "../configs/politifact/base", "../configs/politifact/base9", "../configs/politifact/base24" ], "politifact.tex"),
+        # ("../configs/hatexplain/base", "hatexplain.tex"),
+        ([ "../configs/flickr8k/base", "../configs/flickr8k/base9", "../configs/flickr8k/base24" ], "flickr8k.tex"),
+        ([ "../configs/hateful-memes/base", "../configs/hateful-memes/base9", "../configs/hateful-memes/base24" ], "hateful-memes.tex"),
+        ([ "../configs/snli-ve/base", "../configs/snli-ve/base9", "../configs/snli-ve/base24" ], "snli-ve.tex"),
+        ([ "../configs/tut-urban/base", "../configs/tut-urban/base9", "../configs/tut-urban/base24" ], "tut-urban.tex"),
+        ([ "../configs/luma/base", "../configs/luma/base9", "../configs/luma/base24" ], "luma.tex"),
+        ([ "../configs/syntheory/base", "../configs/syntheory/base9", "../configs/syntheory/base24" ], "syntheory.tex"),
     ]
 
     for config, out_name in configs:

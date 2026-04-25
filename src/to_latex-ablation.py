@@ -17,7 +17,7 @@ _ablation_name = {
 
 _metric_name = {
     'avg-drop': "Avg. drop $\\downarrow$", 
-    'inc-conf': "Inc. conf. $\\uparrow$", 
+    'inc-conf': "Avg. gain $\\uparrow$", 
     'delete-auc': "Delete AUC $\\downarrow$", 
     'insert-auc': "Insert AUC $\\uparrow$", 
     'complexity': "Complexity $\\downarrow$", 
@@ -37,8 +37,6 @@ _metric_best = {
 
 def table2latex(table):
     out = (
-        "\\def\\arraystretch{0.75} \n"
-        "\\small \n"
         "\\makebox[\\linewidth][c]{% \n"
         "\t\\begin{tabular}{lcccccc} \n"
         "\t\t\\toprule \n"
