@@ -436,7 +436,7 @@ def sample_multimodal(model, ds_train, ds_test, num_samples, out_dir):
         # Concatenate images
         out_width = max(image_txt.size[0], image_img.size[0])
         out_height = image_txt.size[1] + image_img.size[1]
-        image_out = Image.new('RGB', (out_width, out_height))
+        image_out = Image.new('RGB', (out_width, out_height), color=(255, 255, 255))
         image_out.paste(image_txt, (0, 0))
         image_out.paste(image_img, (0, image_txt.size[1]))
         image_out.save(os.path.join(sample_dir, f"original.png"))
