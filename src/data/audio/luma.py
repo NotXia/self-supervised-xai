@@ -25,8 +25,11 @@ class LUMADataset(Dataset):
 
     ):
         self.rng = random.Random(seed)
+        self.rng_torch = torch.Generator().manual_seed(seed)
         self.sampling_rate = sampling_rate
         self.return_xai_label = return_xai_label
+
+        self.id2label = { 5: 'bird', 16: 'dog', 27: 'man', 31: 'palm', 0: 'baby', 30: 'oak', 6: 'boy', 22: 'girl', 29: 'mouse', 36: 'road', 20: 'fox', 33: 'plain', 34: 'rabbit', 18: 'fish', 26: 'lion', 1: 'bear', 24: 'house', 9: 'camel', 43: 'telephone', 45: 'train', 40: 'snake', 28: 'mountain', 23: 'horse', 44: 'television', 32: 'pine', 37: 'roses', 49: 'woman', 15: 'cloud', 25: 'lamp', 46: 'truck', 21: 'frog', 11: 'cat', 7: 'bridge', 17: 'elephant', 8: 'bus', 48: 'wolf', 14: 'clock', 2: 'bed', 47: 'whale', 35: 'ray', 3: 'bee', 13: 'chair', 19: 'forest', 39: 'ship', 4: 'bicycle', 42: 'tank', 38: 'sea', 12: 'cattle', 10: 'castle', 41: 'table' }
 
         # snapshot_download(repo_id="bezirganyan/LUMA", repo_type="dataset", local_dir=os.path.join(data_dir, "LUMA"))
         df = pd.read_csv(os.path.join(data_dir, "LUMA/audio/datalist.csv"))
@@ -46,7 +49,7 @@ class LUMADataset(Dataset):
         return len(self.data_idxs)
 
     def __inject_noise(self, audio):
-        noise = 0.01 * torch.normal(mean=0, std=torch.ones(5 * self.sampling_rate)) # Total 5 seconds of audio
+        noise = 0.01 * torch.normal(mean=0, std=torch.ones(5 * self.sampling_rate), generator=self.rng_torch) # Total 5 seconds of audio
         true_mask = torch.zeros(len(noise))
         
         # Randomly place audio into noise

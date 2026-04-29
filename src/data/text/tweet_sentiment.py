@@ -20,7 +20,11 @@ class TweetSentimentDataset(Dataset):
     ):
         rng = random.Random(seed)
         ds = load_dataset("mteb/tweet_sentiment_extraction", cache_dir=data_dir)
-
+        self.id2label = {
+            0: "negative",
+            1: "neutral",
+            2: "positive"
+        }
         match split:
             case "train" | "validation":
                 self.data = ds["train"]

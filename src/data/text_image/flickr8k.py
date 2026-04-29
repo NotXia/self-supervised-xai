@@ -26,6 +26,11 @@ class Flickr8kDataset(Dataset):
     ):
         self.rng = random.Random(seed)
         self.data = load_dataset("jxie/flickr8k")
+        self.id2label = {
+            0: "incorrect",
+            1: "correct"
+        }
+
         match split:
             case "train": self.data = self.data["train"]
             case "validation": self.data = self.data["validation"]

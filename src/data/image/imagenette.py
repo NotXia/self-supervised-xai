@@ -25,6 +25,20 @@ class ImagenetteDataset(Dataset):
     ):
         self.rng = random.Random(seed)
         self.data = load_dataset("frgfm/imagenette", "320px")
+
+        self.id2label = {
+            0: "fish",
+            1: "dog",
+            2: "cassette player",
+            3: "chain saw",
+            4: "church",
+            5: "french horn",
+            6: "garbage truck",
+            7: "gas pump",
+            8: "golf ball",
+            9: "parachute",
+        }
+
         match split:
             case "train": 
                 self.data = self.data["train"]
