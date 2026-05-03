@@ -21,6 +21,11 @@ class IMDBDataset(Dataset):
         rng = random.Random(seed)
         ds = load_dataset("stanfordnlp/imdb", cache_dir=data_dir)
 
+        self.id2label = {
+            0: "negative",
+            1: "positive"
+        }
+
         match split:
             case "train" | "validation":
                 self.data = ds["train"]
