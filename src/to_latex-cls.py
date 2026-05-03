@@ -67,9 +67,9 @@ def to_latex(configs, out_path):
     for i, b in enumerate(baselines):
         row = [ _baseline_name[b] ]
         for j, c in enumerate(configs):
-            best_str = f"{max(data[:, j]):.2f}"
-            value_str = f"{data[i, j]:.2f}"
-            std_str = f"{data_std[i, j]:.2f}"
+            best_str = f"{max(data[:, j]):.3f}"
+            value_str = f"{data[i, j]:.3f}"
+            std_str = f"{data_std[i, j]:.3f}"
 
             if value_str == best_str:
                 row.append( f"\\textbf{{{value_str} $\\pm$ {std_str}}}" )
