@@ -17,6 +17,9 @@ from PIL import Image, ImageChops
 import io
 import soundfile as sf
 
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
 from models import get_model
 from data import get_dataset
 from utils.plot import *
@@ -53,6 +56,46 @@ def crop_whitespace(image):
     return image.crop(bbox) if bbox else image
 
 
+def get_text_colorbar():
+    cmap = plt.get_cmap('OrRd')
+    vmin, vmax = 0, 1
+
+    fig, ax = plt.subplots(figsize=(6, 0.7))
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    cb = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax, orientation='horizontal')
+    cb.set_ticks([0.0, 0.25, 0.5, 0.75, 1.0])
+    cb.set_ticklabels(['0.0\n(not relevant)', '0.25', '0.5', '0.75', '1\n(relevant)'])
+
+    buff = io.BytesIO()
+    plt.savefig(buff, format="png", bbox_inches="tight")
+    buff.seek(0)
+    image = Image.open(buff)
+    plt.close()
+
+    return image
+
+
+def html2image(html):
+    HTML(string=html).write_pdf(os.path.join(".tempexport.pdf"))
+    page = fitz.open(os.path.join(".tempexport.pdf"))[0]
+    os.remove(os.path.join(".tempexport.pdf")) 
+    image = page.get_pixmap(dpi=300).pil_image()
+    image = crop_whitespace(image)
+    return image
+
+def concat_images(images):
+    out_width = max([img.size[0] for img in images])
+    out_height = sum([img.size[1] for img in images])
+    image_out = Image.new('RGB', (out_width, out_height), color=(255, 255, 255))
+
+    offset = 0
+    for img in images:
+        image_out.paste(img, (0, offset))
+        offset += img.size[1]
+
+    return image_out
+
+
 def sample_text(model, ds_train, ds_test, num_samples, out_dir):
     sampled = 0
 
@@ -67,7 +110,8 @@ def sample_text(model, ds_train, ds_test, num_samples, out_dir):
         pred_label = ds_test.id2label[pred]
 
         if pred != label: continue
-        if label == 1: continue # Ignore neutral label
+        if len(text) < 50 or len(text) > 500: continue # (imdb)
+        # if label == 1: continue # Ignore neutral label (tweet-sentiment)
 
         tokens = inputs["input_ids"].cpu().squeeze(0)
         tokens = tokens.tolist()
@@ -128,19 +172,13 @@ def sample_text(model, ds_train, ds_test, num_samples, out_dir):
             text, scores = decode_text_with_scores(tokens[1:], attr_plot[1:], model.text_encoder._model.tokenizer, "</s>")
             html = ' '.join([highlighter_html(t, s) for t, s in zip(text, scores)])
 
-            HTML(string=html).write_pdf(os.path.join(sample_dir, f"{name_file}.pdf"))
-            page = fitz.open(os.path.join(sample_dir, f"{name_file}.pdf"))[0]
-            os.remove(os.path.join(sample_dir, f"{name_file}.pdf")) 
-            image = page.get_pixmap(dpi=300).pil_image()
-            image = crop_whitespace(image)
+            image_text = html2image(html)
+            image_legend = get_text_colorbar()
+            image = concat_images([image_text, image_legend])
             image.save(os.path.join(sample_dir, f"{name_file}.png"))
         
         html = ' '.join([highlighter_html(t, 0) for t in text])
-        HTML(string=html).write_pdf(os.path.join(sample_dir, f"original.pdf"))
-        page = fitz.open(os.path.join(sample_dir, f"original.pdf"))[0]
-        os.remove(os.path.join(sample_dir, f"original.pdf")) 
-        image = page.get_pixmap(dpi=300).pil_image()
-        image = crop_whitespace(image)
+        image = html2image(html)
         image.save(os.path.join(sample_dir, f"original.png"))
 
         # Save label
@@ -395,11 +433,9 @@ def sample_multimodal(model, ds_train, ds_test, num_samples, out_dir):
 
             text, scores = decode_text_with_scores(tokens[1:], attr_text_plot[1:], model.text_encoder._model.tokenizer, "</s>")
             html = ' '.join([highlighter_html(t, s) for t, s in zip(text, scores)])
-            HTML(string=html).write_pdf(os.path.join(sample_dir, f"{name_file}.pdf"))
-            page = fitz.open(os.path.join(sample_dir, f"{name_file}.pdf"))[0]
-            os.remove(os.path.join(sample_dir, f"{name_file}.pdf")) 
-            image_txt = page.get_pixmap(dpi=300).pil_image()
-            image_txt = crop_whitespace(image_txt)
+            image_txt = html2image(html)
+
+            image_txt_legend = get_text_colorbar()
 
             im = plt.imshow(image_plot.permute(1, 2, 0))
             plt.imshow(attr_image_plot.permute(1, 2, 0), alpha=0.75)
@@ -412,20 +448,11 @@ def sample_multimodal(model, ds_train, ds_test, num_samples, out_dir):
             plt.close()
 
             # Concatenate images
-            out_width = max(image_txt.size[0], image_img.size[0])
-            out_height = image_txt.size[1] + image_img.size[1]
-            image_out = Image.new('RGB', (out_width, out_height), color=(255, 255, 255))
-            image_out.paste(image_txt, (0, 0))
-            image_out.paste(image_img, (0, image_txt.size[1]))
-
+            image_out = concat_images([image_txt, image_txt_legend, image_img])
             image_out.save(os.path.join(sample_dir, f"{name_file}.png"))
 
         html = ' '.join([highlighter_html(t, 0) for t in text])
-        HTML(string=html).write_pdf(os.path.join(sample_dir, f"{name_file}.pdf"))
-        page = fitz.open(os.path.join(sample_dir, f"{name_file}.pdf"))[0]
-        os.remove(os.path.join(sample_dir, f"{name_file}.pdf")) 
-        image_txt = page.get_pixmap(dpi=300).pil_image()
-        image_txt = crop_whitespace(image_txt)
+        image_txt = html2image(html)
         im = plt.imshow(image_plot.permute(1, 2, 0))
         plt.xticks([]); plt.yticks([])
         buff = io.BytesIO()
@@ -434,11 +461,7 @@ def sample_multimodal(model, ds_train, ds_test, num_samples, out_dir):
         image_img = Image.open(buff)
         plt.close()
         # Concatenate images
-        out_width = max(image_txt.size[0], image_img.size[0])
-        out_height = image_txt.size[1] + image_img.size[1]
-        image_out = Image.new('RGB', (out_width, out_height), color=(255, 255, 255))
-        image_out.paste(image_txt, (0, 0))
-        image_out.paste(image_img, (0, image_txt.size[1]))
+        image_out = concat_images([image_txt, image_img])
         image_out.save(os.path.join(sample_dir, f"original.png"))
 
         # Save label
@@ -460,13 +483,16 @@ if __name__ == "__main__":
     
 
     L.seed_everything(args.seed)
-    sample_text(*load("../configs/tweet-sentiment/base", args.device), args.num_samples, os.path.join(args.out_dir, "text"))
+    sample_text(*load("../configs/imdb/base", args.device), args.num_samples, os.path.join(args.out_dir, "text"))
 
-    L.seed_everything(args.seed)
-    sample_image(*load("../configs/imagenette/base", args.device), args.num_samples, os.path.join(args.out_dir, "image"))
+    # L.seed_everything(args.seed)
+    # sample_text(*load("../configs/tweet-sentiment/base", args.device), args.num_samples, os.path.join(args.out_dir, "text"))
 
-    L.seed_everything(args.seed)
-    sample_audio(*load("../configs/luma/base", args.device), args.num_samples, os.path.join(args.out_dir, "audio"))
+    # L.seed_everything(args.seed)
+    # sample_image(*load("../configs/imagenette/base", args.device), args.num_samples, os.path.join(args.out_dir, "image"))
 
-    L.seed_everything(args.seed)
-    sample_multimodal(*load("../configs/flickr8k/base", args.device), args.num_samples, os.path.join(args.out_dir, "multimodal"))
+    # L.seed_everything(args.seed)
+    # sample_audio(*load("../configs/luma/base", args.device), args.num_samples, os.path.join(args.out_dir, "audio"))
+
+    # L.seed_everything(args.seed)
+    # sample_multimodal(*load("../configs/flickr8k/base", args.device), args.num_samples, os.path.join(args.out_dir, "multimodal"))
