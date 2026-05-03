@@ -7,7 +7,8 @@ from copy import copy
 
 
 API_KEY = open("../.tally-key", "r").read()
-ASSETS_URL = open("../.assets-url", "r").read()
+BASE_URL = open("../.assets-url", "r").read()
+ASSETS_URL = os.path.join(BASE_URL, "samples-user-study")
 METHODS = ["ours", "saliency", "int_gradients", "deeplift", "gradient_shap"]
 curr_page_idx = 0
 
@@ -85,7 +86,7 @@ def linear_scale_block(name):
         'groupUuid': f'{uuid.uuid4()}',
         'groupType': 'LINEAR_SCALE',
         'payload': {
-            "isRequired": False,
+            "isRequired": True,
             "hasDefaultAnswer": False,
             "start": 1,
             "end": 5,
@@ -137,7 +138,7 @@ def audio_block(url):
 def load_images(path, rng):
     out_blocks = []
     instructions = (
-        "The task of the dataset is object classification. Each image contains a single object to classify.<br/>"
+        "The task of the dataset is <strong>object classification</strong>. Each image contains a single object to classify.<br/>"
         "The heatmap overlay indicates which regions of the image the model focused on. "
         "Warmer colors indicate higher relevance. "
         "Rate how well the highlighted region justifies the predicted class and matches what you would consider the most relevant part of the image.<br/><br/>"
@@ -152,10 +153,10 @@ def load_images(path, rng):
     out_blocks.append( h1_block("Image samples") )
     out_blocks.append( text_block(
         (
-            "This section contains 10 random samples of an image classification dataset. <br/>"
-            + "We will present the prediction of the model and the original image. Then, 5 images overlayed with a heatmap will follow. <br/>"
-            + "For each one, you will be able to give a preference score from 1 to 5. <br/><br/>"
-            + "Detailed istructions are as follows (they will be visible in each page): <br/>"
+            "This section contains <strong>10 random samples</strong> of an <strong>image classification</strong> dataset. <br/>"
+            + "We will present the prediction of the model and the original image. Then, <strong>5 images overlayed with a heatmap</strong> will follow. <br/>"
+            + "For each one, you will be able to give a <strong>preference score from 1 to 5</strong>. <br/><br/>"
+            + "Detailed instructions are as follows (they will be visible in each page): <br/>"
             + instructions
         )
     ) )
@@ -193,7 +194,7 @@ def load_images(path, rng):
 def load_texts(path, rng):
     out_blocks = []
     instructions = (
-        "The task of the dataset is sentiment classification from social media posts.<br/>"
+        "The task of the dataset is <strong>sentiment classification</strong> from movie reviews.<br/>"
         "The highlighted words indicate which tokens the model focused on to make its prediction. "
         "Words with a dark red background are considered highly relevant. "
         "Rate how well the highlighted words justify the predicted class and match what you would consider relevant in the sentence.<br/><br/>"
@@ -208,10 +209,10 @@ def load_texts(path, rng):
     out_blocks.append( h1_block("Text samples") )
     out_blocks.append( text_block(
         (
-            "This section contains 10 random samples of a text classification dataset. <br/>"
-            + "We will present the prediction of the model and the original document. Then, 5 documents with highlighted words will follow. <br/>"
-            + "For each one, you will be able to give a preference score from 1 to 5. <br/><br/>"
-            + "Detailed istructions are as follows (they will be visible in each page): <br/>"
+            "This section contains <strong>10 random samples</strong> of a <strong>text classification</strong> dataset. <br/>"
+            + "We will present the prediction of the model and the original document. Then, <strong>5 documents with highlighted words</strong> will follow. <br/>"
+            + "For each one, you will be able to give a <strong>preference score from 1 to 5</strong>. <br/><br/>"
+            + "Detailed instructions are as follows (they will be visible in each page): <br/>"
             + instructions
         )
     ) )
@@ -249,7 +250,7 @@ def load_texts(path, rng):
 def load_audios(path, rng):
     out_blocks = []
     instructions = (
-        "The task of the dataset is spoken word detection. Each audio track contains noise and one spoken word.<br/>"
+        "The task of the dataset is <strong>spoken word detection</strong>. Each audio track contains noise and one spoken word.<br/>"
         "Listen to the original audio clip first, then listen to each explanation. "
         "Each explanation is a version of the audio where the most relevant parts have been preserved according to the model. "
         "Rate how well the preserved audio corresponds to the predicted class and matches what you would consider the most relevant part of the clip.<br/><br/>"
@@ -264,10 +265,10 @@ def load_audios(path, rng):
     out_blocks.append( h1_block("Audio samples") )
     out_blocks.append( text_block(
         (
-            "This section contains 10 random samples of an audio classification dataset. <br/>"
-            + "We will present the prediction of the model and the original audio track. Then, 5 audio tracks where the most relevant parts are preserved will follow. <br/>"
-            + "For each one, you will be able to give a preference score from 1 to 5. <br/><br/>"
-            + "Detailed istructions are as follows (they will be visible in each page): <br/>"
+            "This section contains <strong>10 random samples</strong> of an <strong>audio classification</strong> dataset. <br/>"
+            + "We will present the prediction of the model and the original audio track. Then, <strong>5 audio tracks where the most relevant parts are preserved</strong> will follow. <br/>"
+            + "For each one, you will be able to give a <strong>preference score from 1 to 5</strong>. <br/><br/>"
+            + "Detailed instructions are as follows (they will be visible in each page): <br/>"
             + instructions
         )
     ) )
@@ -305,7 +306,7 @@ def load_audios(path, rng):
 def load_multimodal(path, rng):
     out_blocks = []
     instructions = (
-        "The task of the dataset is caption verification. Each image is paired with a caption that can be correct or incorrect.<br/>"
+        "The task of the dataset is <strong>caption verification</strong>. Each image is paired with a caption that can be correct or incorrect.<br/>"
         "The explanation highlights relevant words in the text and relevant regions in the image. "
         "Rate how well the combination of both justifies the predicted class and matches your intuition about what is relevant across both modalities.<br/><br/>"
         "Rating scale:<br/>"
@@ -319,10 +320,10 @@ def load_multimodal(path, rng):
     out_blocks.append( h1_block("Multimodal samples") )
     out_blocks.append( text_block(
         (
-            "This section contains 10 random samples of a text-image classification dataset. <br/>"
-            + "We will present the prediction of the model and the original text-image pair. Then, 5 text-image pairs with highlighted words and heatmap overlay will follow. <br/>"
-            + "For each one, you will be able to give a preference score from 1 to 5. <br/><br/>"
-            + "Detailed istructions are as follows (they will be visible in each page): <br/>"
+            "This section contains <strong>10 random samples</strong> of a <strong>text-image classification</strong> dataset. <br/>"
+            + "We will present the prediction of the model and the original text-image pair. Then, <strong>5 text-image pairs with highlighted words and heatmap overlay</strong> will follow. <br/>"
+            + "For each one, you will be able to give a <strong>preference score from 1 to 5</strong>. <br/><br/>"
+            + "Detailed instructions are as follows (they will be visible in each page): <br/>"
             + instructions
         )
     ) )
@@ -371,16 +372,25 @@ if __name__ == "__main__":
         title_block("Introduction"),
         text_block(
             (
-                "In this study, you will evaluate explanations produced by AI models across four modalities: text, image, audio, and multimodal. "
-                "For each question, you are shown an input and the class predicted by an AI classifier. "
-                "You are then shown 4 explanations, each produced by a different method. "
-                "Your task is to rate each explanation from 1 to 5 based on two criteria considered together: <br/>"
+                "In this study, you will evaluate explanations produced by AI models across four modalities: <strong>text, image, audio, and multimodal</strong>. "
+                "For each question, you are shown an <strong>input and the class predicted by an AI classifier</strong>. "
+                "You are then shown <strong>5 explanations</strong>, each produced by a different method. "
+                "Your task is to <strong>rate each explanation from 1 to 5</strong> based on two criteria considered together: <br/>"
                 "  (1) how well it highlights the parts of the input that justify the predicted class, and <br/>"
                 "  (2) how well it matches your own intuition about what is relevant for that class. <br/>"
                 "For each modality, a short specific instruction will be provided before the corresponding questions to clarify what you are looking at. "
-                "There are no right or wrong answers; we are interested in your perception."
+                "<strong>There are no right or wrong answers</strong>; we are interested in your perception."
             )
         ),
+        page_break_block(),
+        title_block("Check that everything works"),
+        text_block(
+            (
+                "To make sure everything is working, check if you can see the picture and listen to the audio track. If it does not work, try to change browser."
+            )
+        ),
+        image_block(os.path.join("https://picsum.photos/536/354")),
+        audio_block(os.path.join(BASE_URL, "samples/luma/sample_0/original.wav")),
         page_break_block(),
     ]
 
@@ -393,7 +403,8 @@ if __name__ == "__main__":
 
     form_blocks += [
         h1_block("Thank you!"),
-        text_block("Thank you for taking your time to fill this form!")
+        text_block("Thank you for taking your time to fill this form!"),
+        image_block(os.path.join("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExcXdobXNueTh0bXY4aW8ybGVqemcxdGl0YnJha2l3NnQxYWwxMXA3eCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/PGSnPf27XvtTXGTKIG/giphy.gif")),
     ]
 
     response = requests.post(
